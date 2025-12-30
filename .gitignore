@@ -1,6 +1,9 @@
 # Data directory (large files)
-/data/
+/data/*
 !/data/.gitkeep
+!/data/raw/
+/data/raw/*
+!/data/raw/*.json
 
 # Python
 __pycache__/
@@ -43,5 +46,3 @@ venv.bak/
 
 # UV
 .uv/
-
-
