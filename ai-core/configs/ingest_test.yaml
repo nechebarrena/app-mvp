@@ -1,0 +1,12 @@
+session:
+  video_id: "video_test_1"  # Assumes data/raw/video_test_1.mp4 exists
+  output_dir: "ingest_test_run"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk" # This triggers the Runner logic to fetch the raw video path
+    save_output: true
+    params: {}
+

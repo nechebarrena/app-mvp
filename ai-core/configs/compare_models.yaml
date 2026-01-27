@@ -1,0 +1,104 @@
+# Compare YOLO Models Pipeline
+# 
+# Runs multiple YOLO models in parallel and generates a comparison video
+# with one panel per model. No merge/fusion, just raw detections.
+#
+# Models:
+#   - yolo_custom: Your custom-trained model (discos, barra, atleta)
+#   - yolo_coco: COCO pretrained (80 classes including person, sports ball, etc.)
+#   - yolo_pose: Pose estimation (person keypoints)
+
+session:
+  video_id: "video_test_1"
+  output_dir: "compare_models_run"
+
+steps:
+  # 1. Load video
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  # 2. Run custom YOLO model (your trained model)
+  - name: yolo_custom
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      task: "segment"  # Your model does segmentation
+      conf_threshold: 0.25
+      source_name: "yolo_custom"
+      progress_every: 10
+
+  # 3. Run COCO pretrained segmentation model
+  - name: yolo_coco
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8s-seg.pt"
+      task: "segment"  # Segmentation with masks
+      conf_threshold: 0.25
+      source_name: "yolo_coco"
+      progress_every: 10
+
+  # 4. Run Pose estimation
+  - name: yolo_pose
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      task: "pose"
+      conf_threshold: 0.3
+      source_name: "yolo_pose"
+      progress_every: 10
+
+  # 5. Generate comparison video (multi-panel)
+  - name: comparison_video
+    module: "multi_model_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["yolo_custom", "yolo_coco", "yolo_pose"]
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/compare_models_run/comparison.mp4"
+      panel_width: 640
+      font_scale: 0.5
+      show_confidence: true
+      show_class_id: false
+      progress_every: 20
+      # Mask rendering
+      mask_alpha: 0.45          # Opacity of mask fill (0.0-1.0)
+      mask_contour: true        # Draw mask border/contour
+      mask_contour_thickness: 2 # Contour line thickness
+      
+      # Label mapping: global_label -> {source: model_label}
+      # Maps different model labels to unified global labels
+      label_mapping:
+        atleta:
+          yolo_custom: "atleta"
+          yolo_coco: "person"
+          yolo_pose: "person"
+        disco:
+          yolo_custom: "discos"
+          yolo_coco: "frisbee"
+        barra:
+          yolo_custom: "barra"
+          # No equivalent in COCO/pose
+      
+      # Only visualize these global labels (comment out to show all mapped labels)
+      visualize_labels: ["atleta", "disco", "barra"]
+      
+      # Use global labels in display (true) or keep model-specific labels (false)
+      use_global_labels: true

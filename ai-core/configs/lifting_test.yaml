@@ -1,0 +1,77 @@
+session:
+  video_id: "video_test_1"
+  output_dir: "lifting_test_run"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  - name: perception
+    module: "yolo_segmentor"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      conf_threshold: 0.25
+
+  - name: pose_estimation
+    module: "yolo_pose"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      conf_threshold: 0.25
+
+  - name: merger
+    module: "detection_merger"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["perception", "pose_estimation"]
+    save_output: false
+    params: {}
+
+  - name: tracking
+    module: "byte_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "merger"
+    save_output: true
+    params: {}
+
+  - name: optimization
+    module: "lifting_optimizer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "tracking"
+    save_output: true
+    params:
+      # NOTE: Pose model outputs class_name="person". We use it as the athlete source of truth.
+      athlete_class_name: "person"
+      disc_class_name: "discos"
+      lost_enter_frames: 3
+      lost_stop_frames: 60
+      kalman_process_noise: 1.0
+      kalman_measurement_noise: 10.0
+      # Disc gating (shape + size): helps reject big but non-square plates on the floor
+      ratio_min_tracking: 0.65
+      ratio_min_lost: 0.50
+      area_ratio_min_tracking: 0.55
+      area_ratio_min_lost: 0.40
+
+  - name: visualization
+    module: "video_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "optimization" # Only visualizes the OPTIMIZED (filtered) tracks
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/lifting_test_run/optimized_overlay.mp4"

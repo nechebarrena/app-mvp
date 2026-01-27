@@ -13,20 +13,28 @@ name = "ai-core"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "filterpy" },
     { name = "ipykernel" },
+    { name = "lapx" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "scipy" },
     { name = "streamlit" },
     { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "filterpy", specifier = ">=1.4.5" },
     { name = "ipykernel", specifier = ">=7.1.0" },
+    { name = "lapx", specifier = ">=0.9.3" },
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "scipy", specifier = ">=1.16.3" },
     { name = "streamlit", specifier = ">=1.52.2" },
     { name = "ultralytics", specifier = ">=8.3.243" },
 ]
@@ -378,6 +386,17 @@ wheels = [
 ]
 
 [[package]]
+name = "filterpy"
+version = "1.4.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/1d/ac8914360460fafa1990890259b7fa5ef7ba4cd59014e782e4ab3ab144d8/filterpy-1.4.5.zip", hash = "sha256:4f2a4d39e4ea601b9ab42b2db08b5918a9538c168cff1c6895ae26646f3d73b1", size = 177985, upload-time = "2018-10-10T22:38:24.63Z" }
+
+[[package]]
 name = "fonttools"
 version = "4.61.1"
 source = { registry = "https://pypi.org/simple" }
@@ -667,6 +686,47 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/99/dd/841e9a66c4715477ea0abc78da039832fbb09dac5c35c58dc4c41a407b8a/kiwisolver-1.4.9-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:aedff62918805fb62d43a4aa2ecd4482c380dc76cd31bd7c8878588a61bd0369", size = 2391835, upload-time = "2025-08-10T21:27:34.23Z" },
     { url = "https://files.pythonhosted.org/packages/0c/28/4b2e5c47a0da96896fdfdb006340ade064afa1e63675d01ea5ac222b6d52/kiwisolver-1.4.9-cp314-cp314t-win_amd64.whl", hash = "sha256:1fa333e8b2ce4d9660f2cda9c0e1b6bafcfb2457a9d259faa82289e73ec24891", size = 79988, upload-time = "2025-08-10T21:27:35.587Z" },
     { url = "https://files.pythonhosted.org/packages/80/be/3578e8afd18c88cdf9cb4cffde75a96d2be38c5a903f1ed0ceec061bd09e/kiwisolver-1.4.9-cp314-cp314t-win_arm64.whl", hash = "sha256:4a48a2ce79d65d363597ef7b567ce3d14d68783d2b2263d98db3d9477805ba32", size = 70260, upload-time = "2025-08-10T21:27:36.606Z" },
+]
+
+[[package]]
+name = "lapx"
+version = "0.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fd/ba/eaf4e3582ec28fd07778ad6382027335a95b1345bce26ea2c67bad322406/lapx-0.9.3.tar.gz", hash = "sha256:cb4f58d4fa5c03d4de6d73dc1cdef5fa3398e25e0c199e07c304ebf9967511d0", size = 268219, upload-time = "2025-12-18T16:51:51.387Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/c0/9d3927faa939123887618951ba27593a33b270565eb8541373d87d81c2d2/lapx-0.9.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:c168c13ed7ef72384c7f66db6f93f498967a85d9acd5bfb1c00a2a95af8a7728", size = 231386, upload-time = "2025-12-18T16:50:25.429Z" },
+    { url = "https://files.pythonhosted.org/packages/83/76/0d3c2a5d50f0a07fa97afcf1f9338c0001b509ebb8c53bfa535909cadb60/lapx-0.9.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d190dd92639a8ffb82a11d1d12f1643133d7b745a4846420a2d46a3cc6dd74e4", size = 219005, upload-time = "2025-12-18T16:50:26.94Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/08/3b5019ffbae747efc24fd2e58fefc9425b3c165166325e39cb68c085c94e/lapx-0.9.3-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:76d138139e1e9c3eb8c19bc7beb4215e0edae62019c094365244cd89946231fa", size = 1880982, upload-time = "2025-12-18T16:50:28.203Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/6b/1fb3d6c77ae020123d5cf6db8e870caa987ae2c4082f35e1b0f675ddd5e0/lapx-0.9.3-cp312-cp312-manylinux_2_24_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:7ecef3f10235ecbb4e28942e69848251b151b6b9d0b43b09c1274f25a389f368", size = 2044557, upload-time = "2025-12-18T16:50:29.562Z" },
+    { url = "https://files.pythonhosted.org/packages/14/be/23dda64aee9d10425c53e22b2ada8661900cf7ac77899256fc9b72233aeb/lapx-0.9.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e04988da5a89df05b3e9f84993b7d9c174c750731b87d1b0494746fa1dc15c23", size = 1951347, upload-time = "2025-12-18T16:50:30.957Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/54/8425a8f19ea6a2163f0386115439fa1d0a36c0c4b21ed4a33f6c99990482/lapx-0.9.3-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:711d7568f0de1acc4b148d119895c2a07fd5231ff49d108f21ddd4241736bc17", size = 2836289, upload-time = "2025-12-18T16:50:32.438Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/27/218983b2cc439d34ce54e40f6b2e6710ef17cad183b0f770ebbd681871a4/lapx-0.9.3-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:c8b9d2c84c58c3ba11be753660f817a71268ad82624dba9a23234884514d8026", size = 2660774, upload-time = "2025-12-18T16:50:33.852Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/27/2d0979e77cdf757c3180efcebb2f3c329e02039eacf378a5ccff937b4c7d/lapx-0.9.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8f44883bc6c562d7bd802b3ad9bc71339625d1ed8ca06d3e1895623a06bfd829", size = 2978786, upload-time = "2025-12-18T16:50:35.267Z" },
+    { url = "https://files.pythonhosted.org/packages/52/67/bc6a9a9f14b8277ba055be1be09d725d5325f29d35081569fb7846506159/lapx-0.9.3-cp312-cp312-win_amd64.whl", hash = "sha256:88f89785cc1fc60fbfaa600bf6a6c9965b0fd9c856983c03bcb15c9721efb604", size = 224625, upload-time = "2025-12-18T16:50:36.575Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/2e/13f7e92513c215ff7c48afbe0dfbca12204fb84fa5bd058f593209eebdd0/lapx-0.9.3-cp312-cp312-win_arm64.whl", hash = "sha256:677cd3aea1935d72874e2d9a9b59a28183fa1b7d9f08ec96e0f8ce11503bfba5", size = 192370, upload-time = "2025-12-18T16:50:37.827Z" },
+    { url = "https://files.pythonhosted.org/packages/05/da/39c7620deb2b17bfaad85e0cee9f79f530887491bc8e285d463e623ce293/lapx-0.9.3-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:d6c8e45cb26e15e20c78d9c28b64cc58caedd1175c821ce876d1ac3b363a2ccc", size = 230408, upload-time = "2025-12-18T16:50:39.033Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/4c/54b36747cbf90c66637c15ddfd1403d38a573c06027ec7b574f1ae0bd851/lapx-0.9.3-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:e871c632baa09c94896e1b8d727678f1ff729d9ad84c3feb4f207e29c8b31283", size = 217205, upload-time = "2025-12-18T16:50:41.134Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/dc/bae1a3e56806e611382cab50e63c859474814048de3fbf0ea23c60f8a906/lapx-0.9.3-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ef67a8b4c79613daf48c2954238b004f3ce9adfdc3facb5d471707e6743631b8", size = 1876721, upload-time = "2025-12-18T16:50:42.589Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/82/558b93ae8f13c5c32f65472ad029f80778305d99cc5d147b143940073ed3/lapx-0.9.3-cp313-cp313-manylinux_2_24_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:395a2b616de4a3e30a3065d96d877732d8e65beaad839fb5c64ee024f3bf1ce8", size = 2037374, upload-time = "2025-12-18T16:50:44.008Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/3a/db7fb390b50cde31e9d07eeaafd8d6b5ad383375bcd0f2b411062fdac486/lapx-0.9.3-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7f50a7725c821addeed26d1d361fd52920cf6385b9feeb30cdf73816a96ccb69", size = 1946337, upload-time = "2025-12-18T16:50:45.412Z" },
+    { url = "https://files.pythonhosted.org/packages/94/43/f3262925d4c0b521997fbfd6197670f048355d90785189d7779f22d11d87/lapx-0.9.3-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:c53e792b8c2d35f21a181abffeeedc5afba88084022642e67470c341d2840f9a", size = 2818967, upload-time = "2025-12-18T16:50:47.093Z" },
+    { url = "https://files.pythonhosted.org/packages/18/6a/78e3f7a347e4fecdefd7c205dc2bba57d7ec2de6204302ecd8e2c038dbbf/lapx-0.9.3-cp313-cp313-musllinux_1_2_armv7l.whl", hash = "sha256:03296b9826192b2957ba50cd2621a016c43e1c08961e66042f71d10aa2dee3ca", size = 2638371, upload-time = "2025-12-18T16:50:48.477Z" },
+    { url = "https://files.pythonhosted.org/packages/de/82/67c4b298325595bb3bab66abb6e7951944187211fcc10b5e627c3e60e18f/lapx-0.9.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:ea4d90794d5e4fcf0e7323117cb2155502375f3fa7885b4505921aaa904f3e55", size = 2961178, upload-time = "2025-12-18T16:50:49.885Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/80/7357c8b2988694d107b8f5ed76db90ae78698d1cfc108e927c43dbcc8078/lapx-0.9.3-cp313-cp313-win_amd64.whl", hash = "sha256:3a8e42bad742df2ccf5102238d96755fddffd2eaf60659b7d45b3aee47e4123d", size = 223371, upload-time = "2025-12-18T16:50:51.202Z" },
+    { url = "https://files.pythonhosted.org/packages/14/ec/facd27790e7001769cb81ddb13942b27bea64c762980640a004db551f997/lapx-0.9.3-cp313-cp313-win_arm64.whl", hash = "sha256:83b5c59fc7446a5db314cf066429d6eb10db6db55e7b9832b8ea8559956c42c6", size = 191535, upload-time = "2025-12-18T16:50:52.337Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/b7/9c18632df0b0b86d3c97c3c39791ff9dc1110a73a533646dffa061c9e6fe/lapx-0.9.3-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:9a76c3327b236e9aa1e31242cf03bbc5f34f64ef0a2bfde312e2ff7d68044569", size = 231202, upload-time = "2025-12-18T16:50:53.469Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/37/3a0ce05bfdf4aa7d95b873ff8173efe48effec44a7d1ca8076fe994bf3a8/lapx-0.9.3-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:4a33974e24c79a7b00484b93fb4aeee973640401ff6952e17a67c3b142e4a1ad", size = 217887, upload-time = "2025-12-18T16:50:54.717Z" },
+    { url = "https://files.pythonhosted.org/packages/22/6d/f37edc885bc553b41a71f36ae8de0b557aae1669da5c6a153ca349d00cd2/lapx-0.9.3-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9c9c15e5773428ca718af011430903b53f3e9c2998c9c77148c2fdc78e32fbc4", size = 1875349, upload-time = "2025-12-18T16:50:55.98Z" },
+    { url = "https://files.pythonhosted.org/packages/18/5c/8dbbc1e4a004fd0a24c1348268b487b2f752e08008ac318454ef42566f19/lapx-0.9.3-cp314-cp314-manylinux_2_24_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:e1b31844fe1ae09785fd7f13758c783bcfc687a0367b7a4ff8356bd714b4f853", size = 2030363, upload-time = "2025-12-18T16:50:57.368Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/b1/832afcb1a7cc132592441641a911d7609bea0b4d794fbef7c6c57a73c1fb/lapx-0.9.3-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:440ef4190d7011944f75c2199060e417111f473fc55ad4853e29270ddd9725e9", size = 1940122, upload-time = "2025-12-18T16:50:58.829Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/89/a8cba04a16234ff6440bae8acc962d33ce6a4feafae83a69babed62ea113/lapx-0.9.3-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:2014753594b3d2dd45de521959637ca1237c15e6949211f4b8c88418b5eabba5", size = 2818883, upload-time = "2025-12-18T16:51:01.092Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/77/9b89e01e1f907edf1aaa937b903fbda70ebe7e43ff7ca5ea032e1742f3e3/lapx-0.9.3-cp314-cp314-musllinux_1_2_armv7l.whl", hash = "sha256:e451cefa3e7e2dbc9e59d61fe9c6ce3e57a3042fb2ed14b45dbee1fc21763c9e", size = 2628698, upload-time = "2025-12-18T16:51:02.685Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/63/0e931fa5e92898890b570ceaa8ff0d2e3d798b7dc198d67fe24ac97beb6b/lapx-0.9.3-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:94f45c6054ee6b60d7aba1a00bbb18d8988bd8bf806519a4bb00cb6e9519a92d", size = 2957899, upload-time = "2025-12-18T16:51:04.086Z" },
+    { url = "https://files.pythonhosted.org/packages/10/27/e6cacc7f8a3aedd3db48a170ffbe128a3f1708b84c596a9d439cb5b4fc47/lapx-0.9.3-cp314-cp314-win_amd64.whl", hash = "sha256:42cdc96fdbb79f3260a1525ce5c0b475ec033ca83ec45821a60965a351640a88", size = 228225, upload-time = "2025-12-18T16:51:05.529Z" },
+    { url = "https://files.pythonhosted.org/packages/97/00/98ff362223a0a694108d908999cabe088557707dc5f394cb89d83948acd5/lapx-0.9.3-cp314-cp314-win_arm64.whl", hash = "sha256:4c8663d89e9bd5c947b71ca2b14c4d6bc5a4b3416cc870b4cd1fad3fa00b0e22", size = 197896, upload-time = "2025-12-18T16:51:07.086Z" },
 ]
 
 [[package]]

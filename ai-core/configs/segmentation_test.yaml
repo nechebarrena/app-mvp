@@ -1,0 +1,21 @@
+session:
+  video_id: "video_test_1"
+  output_dir: "segmentation_run_01"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: true
+    params: {}
+
+  - name: perception
+    module: "yolo_segmentor"
+    enabled: true
+    input_source: "memory"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-seg.pt"  # Using nano seg model for test, user will use best.pt
+      conf_threshold: 0.25
+

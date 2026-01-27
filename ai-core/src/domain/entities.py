@@ -18,10 +18,14 @@ class Detection(BaseModel):
     class_id: int
     class_name: str
     confidence: float
-    bbox: Tuple[float, float, float, float] # (x_min, y_min, x_max, y_max) normalized or pixels? 
-    # Let's standardize on PIXELS for this project to avoid confusion, or Normalized. 
-    # YOLO returns pixels usually. Let's document: PIXELS [x1, y1, x2, y2]
+    bbox: Tuple[float, float, float, float] # (x_min, y_min, x_max, y_max)
     mask: Optional[Any] = None # Placeholder for segmentation mask (numpy array or RLE)
+    keypoints: Optional[List[List[float]]] = None # List of [x, y, conf] for pose estimation
+    # Optional provenance / geometry (used by hybrid pipelines)
+    source: Optional[str] = None # e.g. "yolo", "geom", "pose", "fused"
+    radius_px: Optional[float] = None # circle-like radius estimate in pixels (if applicable)
+    shape_score: Optional[float] = None # e.g. circularity [0..1] for geom detections
+    debug: Optional[Any] = None # free-form debug payload (JSON-serializable dict recommended)
 
     class Config:
         arbitrary_types_allowed = True
@@ -33,7 +37,7 @@ class TrackedObject(BaseModel):
     history: List[Tuple[float, float]] = Field(default_factory=list) # Center points (x, y)
     velocity: Optional[Tuple[float, float]] = None
 
-# --- Runtime Entities (Dataclasses for internal flow) ---
+# --- Runtime Entities ---
 
 @dataclass
 class FrameData:
@@ -46,15 +50,9 @@ class FrameData:
     def __repr__(self):
         return f"FrameData(idx={self.frame_index}, ts={self.timestamp:.2f}, shape={self.image.shape})"
 
-@dataclass
-class VideoSession:
+class VideoSession(BaseModel):
     """Represents a loaded video session ready for processing."""
     file_path: str
     specs: CameraSpecs
     total_frames: int
     duration_seconds: float
-    
-    # We might add a generator or iterator here later, but for the entity 
-    # it just holds metadata about the session.
-
-

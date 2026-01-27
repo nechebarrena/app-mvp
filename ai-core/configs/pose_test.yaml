@@ -1,0 +1,30 @@
+session:
+  video_id: "video_test_1"
+  output_dir: "pose_test_run"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  - name: pose_estimation
+    module: "yolo_pose"
+    enabled: true
+    input_source: "memory"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      conf_threshold: 0.5
+
+  - name: visualization
+    module: "video_renderer"
+    enabled: true
+    input_source: "memory"
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/pose_test_run/pose_overlay.mp4"
+

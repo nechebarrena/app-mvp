@@ -1,0 +1,49 @@
+session:
+  video_id: "video_test_1"
+  output_dir: "pose_segmentation_test_run"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  - name: pose_estimation
+    module: "yolo_pose"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"  # Explicit dependency on video session
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      conf_threshold: 0.5
+
+  - name: perception
+    module: "yolo_segmentor"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"  # Explicit dependency on video session (Branching!)
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      conf_threshold: 0.25
+
+  - name: merger
+    module: "detection_merger"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["pose_estimation", "perception"] # Merging branches
+    save_output: true
+    params: {}
+
+  - name: visualization
+    module: "video_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "merger" # Consumes merged results
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/pose_segmentation_test_run/pose_segmentation_overlay.mp4"

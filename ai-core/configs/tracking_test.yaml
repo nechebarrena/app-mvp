@@ -1,0 +1,49 @@
+session:
+  video_id: "video_test_1"
+  output_dir: "tracking_test_run"
+
+steps:
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  - name: perception
+    module: "yolo_segmentor"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      conf_threshold: 0.25
+
+  - name: tracking
+    module: "byte_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "perception"
+    save_output: true
+    params: {}
+
+  - name: cleaning
+    module: "trajectory_cleaner"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "tracking"
+    save_output: true
+    params:
+      min_duration_frames: 10
+      max_gap_frames: 5
+
+  - name: visualization
+    module: "video_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "cleaning"
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/tracking_test_run/tracking_overlay.mp4"

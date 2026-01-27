@@ -1,46 +1,83 @@
 # App MVP: AI Video Analysis
 
-A modular computer vision project designed to prototype, train, and validate object detection and tracking models (YOLO based) for eventual deployment on mobile devices (iOS/Android).
+A modular computer vision pipeline for video analysis using multiple YOLO models (detection, segmentation, pose estimation).
 
-## Project Overview
+## Features
 
-The goal of this project is to build an MVP that:
-1.  Captures short video clips (10-60s).
-2.  Processes them using AI (Object Detection + Tracking).
-3.  Calculates derived metrics (speed, trajectory, counts).
-4.  Displays results to the user.
-
-This repository focuses on the **AI Core** (Python) which serves as the R&D lab and processing engine before models are optimized and exported to the mobile application.
+- **Multi-Model Pipeline**: Run 3+ YOLO models in parallel on the same video
+- **Multi-Panel Visualization**: Compare model outputs side-by-side
+- **Label Unification**: Map different model labels to unified concepts
+- **Configurable**: YAML-based pipeline configuration
 
 ## Quick Start
 
 ### Prerequisites
-*   Python 3.10+
-*   [uv](https://github.com/astral-sh/uv) (for dependency management)
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) (dependency management)
 
 ### Installation
-1.  Clone the repository.
-2.  Initialize the environment:
-    ```bash
-    cd ai-core
-    uv sync
-    ```
 
-### Running Tools
-*   **Metadata Scanner:** Automatically generate JSON sidecars for your raw videos.
-    ```bash
-    python ai-core/src/input_layer/metadata_scanner.py
-    ```
+```bash
+cd ai-core
+uv sync
+```
+
+### Run Multi-Model Comparison
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python run_pipeline.py configs/compare_models.yaml
+```
+
+This runs:
+- **yolo_custom**: Your trained segmentation model (atleta, barra, discos)
+- **yolo_coco**: COCO pretrained segmentation (80 classes)
+- **yolo_pose**: Pose estimation (person keypoints)
+
+Output: `data/outputs/compare_models_run/comparison.mp4`
+
+## Project Structure
+
+```
+/app-mvp
+├── /ai-core                    # Python AI core
+│   ├── /configs                # Pipeline YAML configs
+│   ├── /models
+│   │   ├── /custom             # Your trained models (best.pt)
+│   │   └── /pretrained         # COCO models (yolov8s-seg.pt, etc.)
+│   ├── /src                    # Source code
+│   └── run_pipeline.py         # Entry point
+├── /data
+│   ├── /raw                    # Input videos
+│   └── /outputs                # Pipeline outputs
+└── /docs                       # Documentation
+```
 
 ## Documentation
 
-*   **[Architecture Guide](docs/architecture.md):** Detailed explanation of the project structure, Domain-Driven Design approach, and data flow.
-*   **[Tooling Guide](docs/tools.md):** How to use the helper scripts (like the Metadata Scanner).
+- **[Full Documentation](docs/README_FULL.md)**: Complete reference for all features
+- **[Architecture](docs/architecture.md)**: Project structure and design
+- **[Pipeline Guide](docs/pipeline_guide.md)**: Configuration and execution
 
-## Directory Structure
-See [docs/architecture.md](docs/architecture.md) for the full breakdown.
+## Available Models
 
-*   `ai-core/`: Python source code.
-*   `data/`: Local storage for videos and models (not synced to Git).
-*   `mobile-app/`: Placeholder for the mobile client.
+| Model | Type | Classes |
+|-------|------|---------|
+| models/custom/best.pt | Segment | atleta, barra, discos |
+| models/pretrained/yolov8s-seg.pt | Segment | 80 COCO classes |
+| models/pretrained/yolov8n-pose.pt | Pose | person (17 keypoints) |
 
+## Label Mapping
+
+Unify different model labels:
+
+```yaml
+label_mapping:
+  atleta:
+    yolo_custom: "atleta"
+    yolo_coco: "person"
+    yolo_pose: "person"
+  disco:
+    yolo_custom: "discos"
+    yolo_coco: "frisbee"
+```

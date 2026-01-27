@@ -1,52 +1,20 @@
-# Tooling Guide
 
-This document describes the auxiliary tools and scripts developed to support the AI Core workflow.
-
-## Metadata Scanner (`metadata_scanner.py`)
+## Visualization (`video_renderer.py`)
 
 ### Purpose
-To standardize video ingestion, every video file in `data/raw/` must have a corresponding JSON "sidecar" file containing metadata (camera specs, technical info, user notes). This script automates the creation of these files.
+Generates debugging videos by overlaying the detection results (masks, boxes, labels) onto the original footage. It uses color coding for different classes and transparency for segmentation masks.
 
-### Usage
-The script is located at `ai-core/src/input_layer/metadata_scanner.py`.
-
-**Run via Python:**
-```bash
-# From project root
-python ai-core/src/input_layer/metadata_scanner.py
+### Configuration
+In your YAML pipeline config:
+```yaml
+  - name: visualization
+    module: "video_renderer"
+    enabled: true
+    input_source: "memory" # Receives detections from Perception step
+    params:
+      video_source: "data/raw/video_test_1.mp4" # Path to the original video
+      output_filename: "overlay.mp4" # Optional, defaults to overlay.mp4
 ```
 
-### Behavior
-1.  Scans `data/raw/` for `.mp4` files.
-2.  For each video found:
-    *   Checks if `video_name.json` exists.
-    *   **If missing:**
-        *   Extracts technical specs (Resolution, FPS, Frame Count) using OpenCV.
-        *   Generates a new JSON file with these specs and default placeholders for manual fields.
-    *   **If present:** Skips the file (does not overwrite existing notes).
-
-### The Sidecar JSON Format
-The generated JSON follows this schema:
-
-```json
-{
-  "technical": {
-    "width": 1920,
-    "height": 1080,
-    "fps": 30.0,
-    "frame_count": 600,
-    "duration_seconds": 20.0
-  },
-  "camera_specs": {
-    "device_model": "Unknown (Auto-generated)",
-    "focal_length_mm": null,
-    "sensor_width_mm": null
-  },
-  "context": {
-    "user_notes": "",
-    "tags": ["auto-generated"]
-  }
-}
-```
-**Workflow:** After dropping a video into `raw`, run the scanner, then manually edit the `.json` if you know specific details (like the phone model used).
-
+### Output
+The module generates an MP4 video file in the run's output directory (e.g., `data/outputs/{run_id}/overlay.mp4`).

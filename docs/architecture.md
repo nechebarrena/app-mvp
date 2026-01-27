@@ -40,24 +40,25 @@ To ensure modularity and testability, we use a simplified DDD approach located i
 Data structures that flow between modules. They are "dumb" data containers (Pydantic models or Dataclasses).
 *   **VideoSession:** Represents a loaded video file and its metadata.
 *   **FrameData:** A single frame image with timestamp.
-*   **Detection:** Result of the generic object detector (bounding box, class).
+*   **Detection:** Result of the generic object detector (bounding box, class, mask, keypoints).
 *   **TrackedObject:** Result of the tracker (ID, history of positions).
 
 ### Ports (`ports.py`)
 Interfaces (Python Protocols) that define what a module *must do*, decoupling the *what* from the *how*.
-*   **IVideoLoader:** Defines how to load video sessions.
-*   **IObjectDetector:** Defines how to detect objects in a frame.
-*   **ITracker:** Defines how to associate detections over time.
+*   **IPipelineStep:** Generic interface for any processing step, enforcing I/O capabilities.
 
-## 3. Dependency Management
-We use **`uv`** for lightning-fast package management.
-*   **Configuration:** All dependencies are listed in `ai-core/pyproject.toml`.
-*   **Lockfile:** `ai-core/uv.lock` ensures reproducible builds.
-*   **Virtual Environment:** Automatically managed by `uv` in `.venv`.
+## 3. Data Flow (The Hybrid Pipeline)
+The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runner.py`) driven by YAML files.
 
-## 4. Data Flow (The Pipeline)
-1.  **Ingestion:** `Input Layer` reads `.mp4` + `.json` sidecar -> Produces `FrameData`.
-2.  **Perception:** `Perception Module` (YOLO) consumes `FrameData` -> Produces `List[Detection]`.
-3.  **Analysis:** `Analysis Module` consumes `List[Detection]` -> Produces `List[TrackedObject]` and metrics.
-4.  **Output:** `Visualization` renders results to disk or screen.
+### Execution Modes
+1.  **Memory Mode (Default):** Modules pass Pydantic objects directly in RAM.
+2.  **Disk Mode (Debug):** Modules save/load intermediate results (JSON) to allow partial re-runs.
 
+### Non-Linear Execution
+Steps can declare inputs explicitly, allowing parallel branches:
+*   `Pose Estimation` consumes `Ingestion` output.
+*   `Segmentation` consumes `Ingestion` output.
+*   `Merger` consumes both `Pose` and `Segmentation` outputs.
+*   `Visualization` consumes `Merger` output.
+
+See [docs/pipeline_guide.md](docs/pipeline_guide.md) for details on configuring runs.

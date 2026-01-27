@@ -1,11 +1,35 @@
-# Data directory (large files)
-/data/*
-!/data/.gitkeep
-!/data/raw/
-/data/raw/*
-!/data/raw/*.json
+# ===========================================
+# App MVP - Git Ignore
+# ===========================================
 
+# -------------------------------------------
+# Data directory (large files, outputs, videos)
+# -------------------------------------------
+/data/
+!/data/.gitkeep
+
+# Temporary files
+/tmp/
+
+# -------------------------------------------
+# Model weights (large binary files)
+# -------------------------------------------
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.mlmodel
+*.weights
+
+# Keep model directory structure but not the weights
+ai-core/models/custom/*
+!ai-core/models/custom/.gitkeep
+ai-core/models/pretrained/*
+!ai-core/models/pretrained/.gitkeep
+
+# -------------------------------------------
 # Python
+# -------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -29,20 +53,69 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# -------------------------------------------
 # Virtual Environments
+# -------------------------------------------
 .env
-.venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
 
-# IDEs
+# -------------------------------------------
+# UV (Python package manager)
+# -------------------------------------------
+.uv/
+
+# -------------------------------------------
+# IDEs and Editors
+# -------------------------------------------
 .vscode/
 .idea/
 *.swp
-.DS_Store
+*.swo
+*~
+.project
+.classpath
+.settings/
 
-# UV
-.uv/
+# -------------------------------------------
+# OS files
+# -------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# -------------------------------------------
+# Jupyter Notebooks
+# -------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# -------------------------------------------
+# Logs and debugging
+# -------------------------------------------
+*.log
+logs/
+
+# -------------------------------------------
+# Coverage and testing
+# -------------------------------------------
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
