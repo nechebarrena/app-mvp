@@ -1,7 +1,7 @@
 # Project Architecture
 
 ## Overview
-This project is designed as an MVP for a mobile video analysis application. The core logic is developed in Python ("AI Core") with the intention of exporting optimized models to a native Mobile App.
+This project is designed as an MVP for a mobile video analysis application focused on weightlifting. The core logic is developed in Python ("AI Core") with the intention of exporting optimized models to a native Mobile App.
 
 The architecture strictly separates:
 1.  **Data Storage** (`/data`): Video inputs and processing outputs.
@@ -16,21 +16,24 @@ The architecture strictly separates:
 ├── /data                       <-- DATA STORAGE (Gitignored)
 │   ├── /raw                    <-- Input videos + Sidecar JSON metadata
 │   ├── /processed              <-- Intermediate debug frames
-│   ├── /outputs                <-- Final results (JSON reports, Overlay videos)
-│   └── /models                 <-- Model weights (YOLO .pt, .tflite, .onnx)
+│   └── /outputs                <-- Final results (JSON reports, Overlay videos)
 │
 ├── /ai-core                    <-- PYTHON CORE
 │   ├── pyproject.toml          <-- Dependencies (managed by uv)
-│   ├── /notebooks              <-- Research & Sandboxing
+│   ├── /configs                <-- Pipeline YAML configurations
+│   ├── /models                 <-- Model weights
+│   │   ├── /custom             <-- Custom trained (best.pt)
+│   │   └── /pretrained         <-- Standard YOLO models
 │   └── /src                    <-- Production-ready Code
 │       ├── /domain             <-- CONTRACTS (Entities & Interfaces)
 │       ├── /input_layer        <-- Data Ingestion & ETL
 │       ├── /perception         <-- Vision Models (YOLO)
-│       ├── /analysis           <-- Business Logic (Tracking, Physics)
-│       ├── /visualization      <-- Debug Tools & Dashboards
+│       ├── /analysis           <-- Business Logic (Filter, Track, Refine)
+│       ├── /visualization      <-- Debug Tools & Renderers
+│       ├── /tools              <-- Utility Tools (disc_selector)
 │       └── /pipeline           <-- Orchestration
 │
-└── /mobile-app                 <-- MOBILE CLIENT (Flutter/React Native)
+└── /mobile-app                 <-- MOBILE CLIENT (Future)
 ```
 
 ## 2. Domain-Driven Design (DDD) & Contracts
@@ -40,14 +43,41 @@ To ensure modularity and testability, we use a simplified DDD approach located i
 Data structures that flow between modules. They are "dumb" data containers (Pydantic models or Dataclasses).
 *   **VideoSession:** Represents a loaded video file and its metadata.
 *   **FrameData:** A single frame image with timestamp.
-*   **Detection:** Result of the generic object detector (bounding box, class, mask, keypoints).
-*   **TrackedObject:** Result of the tracker (ID, history of positions).
+*   **Detection:** Result of the object detector (bounding box, class, mask, keypoints).
+*   **TrackedObject:** Result of the tracker (ID, history of positions, velocity, smoothed_position).
 
 ### Ports (`ports.py`)
 Interfaces (Python Protocols) that define what a module *must do*, decoupling the *what* from the *how*.
 *   **IPipelineStep:** Generic interface for any processing step, enforcing I/O capabilities.
 
-## 3. Data Flow (The Hybrid Pipeline)
+### Label Mapper (`label_mapper.py`)
+Utility class for mapping model-specific labels (e.g., "person", "frisbee") to global labels (e.g., "atleta", "disco").
+
+## 3. Three-Phase Heuristics Architecture
+
+The pipeline separates heuristics into three phases:
+
+```
+Detection → [Pre-Tracking] → [Tracking] → [Post-Tracking] → Output
+             DetectionFilter   ModelTracker   TrackRefiner
+```
+
+### Phase 1: Pre-Tracking (DetectionFilter)
+- **State**: None (stateless, per-frame)
+- **Purpose**: Reduce candidate detections
+- **Filters**: Size, confidence, ROI, largest-selector
+
+### Phase 2: Tracking (ModelTracker)
+- **State**: Temporal (Kalman filter)
+- **Purpose**: Assign persistent IDs to objects
+- **Features**: Hungarian assignment, track lifecycle, single-object mode
+
+### Phase 3: Post-Tracking (TrackRefiner)
+- **State**: Full trajectory
+- **Purpose**: Refine trajectories
+- **Features**: Smoothing (moving average, exponential), outlier removal
+
+## 4. Data Flow (The Hybrid Pipeline)
 The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runner.py`) driven by YAML files.
 
 ### Execution Modes
@@ -56,9 +86,14 @@ The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runn
 
 ### Non-Linear Execution
 Steps can declare inputs explicitly, allowing parallel branches:
-*   `Pose Estimation` consumes `Ingestion` output.
-*   `Segmentation` consumes `Ingestion` output.
-*   `Merger` consumes both `Pose` and `Segmentation` outputs.
-*   `Visualization` consumes `Merger` output.
+*   `YOLO Custom` consumes `Ingestion` output.
+*   `YOLO COCO` consumes `Ingestion` output.
+*   `Multi-Model Renderer` consumes multiple model outputs.
 
-See [docs/pipeline_guide.md](docs/pipeline_guide.md) for details on configuring runs.
+```
+Ingestion ─┬─> YOLO Custom ─> Filter ─> Track ─> Refine ─┬─> Visualization
+           ├─> YOLO COCO ──> Filter ─> Track ─> Refine ──┤
+           └─> YOLO Pose ─────────────────────────────────┘
+```
+
+See [docs/pipeline_guide.md](pipeline_guide.md) for details on configuring runs.

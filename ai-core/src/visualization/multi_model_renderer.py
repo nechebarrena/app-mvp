@@ -20,7 +20,7 @@ from typing import Dict, Any, List, Optional, Tuple, Set, Union
 from collections import defaultdict
 
 from domain.ports import IPipelineStep
-from domain.entities import Detection
+from domain.entities import Detection, TrackedObject
 from domain.label_mapper import LabelMapper
 
 
@@ -110,8 +110,22 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
         mask_alpha: float = 0.45,
         mask_contour: bool = True,
         mask_contour_thickness: int = 2,
+        track_id: Optional[int] = None,
+        show_track_id: bool = False,
+        trajectory: Optional[List[Tuple[float, float]]] = None,
+        scale_xy: Tuple[float, float] = (1.0, 1.0),
     ) -> None:
         """Draw a single detection on the frame."""
+        # Draw trajectory trail if available
+        if trajectory and len(trajectory) > 1:
+            sx, sy = scale_xy
+            pts = [(int(x * sx), int(y * sy)) for x, y in trajectory[-30:]]  # Last 30 points
+            for i in range(1, len(pts)):
+                # Fade color based on age (older = darker)
+                alpha = i / len(pts)
+                trail_color = tuple(int(c * (0.3 + 0.7 * alpha)) for c in color)
+                cv2.line(frame, pts[i-1], pts[i], trail_color, max(1, thickness - 1))
+        
         # Draw mask if available
         if det.mask:
             pts = np.array(det.mask, dtype=np.int32).reshape((-1, 1, 2))
@@ -148,7 +162,10 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
 
         # Draw label
-        parts = [det.class_name]
+        parts = []
+        if show_track_id and track_id is not None:
+            parts.append(f"#{track_id}")
+        parts.append(det.class_name)
         if show_id:
             parts.append(f"id:{det.class_id}")
         if show_conf:
@@ -197,37 +214,84 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
 
     def _normalize_input(
         self,
-        input_data: Union[List[Dict[int, List[Detection]]], Dict[str, Dict[int, List[Detection]]]],
-    ) -> Dict[str, Dict[int, List[Detection]]]:
+        input_data: Union[List[Dict], Dict[str, Dict]],
+    ) -> Tuple[Dict[str, Dict[int, List[Detection]]], Dict[str, Dict[int, Dict[int, Dict]]]]:
         """
         Normalize input to Dict[source_name -> {frame_idx -> [Detection]}].
+        Also extracts tracking info if available.
         
-        Handles both:
+        Handles:
         - List of detection dicts (extracts source from Detection.source)
+        - List of tracked object dicts (extracts Detection from TrackedObject)
         - Already normalized dict
+        
+        Returns:
+            - detections: Dict[source_name -> {frame_idx -> [Detection]}]
+            - track_info: Dict[source_name -> {frame_idx -> {det_idx -> {track_id, trajectory}}}]
         """
+        detections: Dict[str, Dict[int, List[Detection]]] = {}
+        track_info: Dict[str, Dict[int, Dict[int, Dict]]] = {}
+        
         if isinstance(input_data, dict) and all(isinstance(k, str) for k in input_data.keys()):
-            # Already normalized
-            return input_data
+            # Already normalized - assume no tracking info
+            return input_data, {}
         
         if isinstance(input_data, list):
-            # List of detection dicts from multiple steps
-            result: Dict[str, Dict[int, List[Detection]]] = {}
-            
+            # List of dicts from multiple steps
             for det_map in input_data:
                 if not isinstance(det_map, dict):
                     continue
                     
-                for frame_idx, detections in det_map.items():
-                    for det in detections:
-                        source = det.source or "unknown"
-                        if source not in result:
-                            result[source] = {}
-                        if frame_idx not in result[source]:
-                            result[source][frame_idx] = []
-                        result[source][frame_idx].append(det)
+                for frame_idx, items in det_map.items():
+                    for det_idx, item in enumerate(items):
+                        # Check if this is a TrackedObject or Detection
+                        if isinstance(item, TrackedObject):
+                            det = item.detection
+                            source = det.source or "unknown"
+                            
+                            # Store detection
+                            if source not in detections:
+                                detections[source] = {}
+                                track_info[source] = {}
+                            if frame_idx not in detections[source]:
+                                detections[source][frame_idx] = []
+                                track_info[source][frame_idx] = {}
+                            
+                            detections[source][frame_idx].append(det)
+                            track_info[source][frame_idx][len(detections[source][frame_idx]) - 1] = {
+                                "track_id": item.track_id,
+                                "trajectory": item.history,
+                            }
+                        elif isinstance(item, Detection):
+                            source = item.source or "unknown"
+                            if source not in detections:
+                                detections[source] = {}
+                            if frame_idx not in detections[source]:
+                                detections[source][frame_idx] = []
+                            detections[source][frame_idx].append(item)
+                        elif hasattr(item, 'detection'):
+                            # Dict-like TrackedObject (from loaded JSON)
+                            det_data = item.get('detection', item) if isinstance(item, dict) else item.detection
+                            if isinstance(det_data, dict):
+                                det = Detection(**det_data)
+                            else:
+                                det = det_data
+                            source = det.source or "unknown"
+                            
+                            if source not in detections:
+                                detections[source] = {}
+                                track_info[source] = {}
+                            if frame_idx not in detections[source]:
+                                detections[source][frame_idx] = []
+                                track_info[source][frame_idx] = {}
+                            
+                            detections[source][frame_idx].append(det)
+                            track_info[source][frame_idx][len(detections[source][frame_idx]) - 1] = {
+                                "track_id": item.get('track_id') if isinstance(item, dict) else getattr(item, 'track_id', None),
+                                "trajectory": item.get('history') if isinstance(item, dict) else getattr(item, 'history', []),
+                            }
             
-            return result
+            return detections, track_info
         
         raise ValueError(f"Unsupported input type: {type(input_data)}")
 
@@ -263,11 +327,15 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
         label_mapper = LabelMapper.from_config(config)
         use_global_labels = bool(config.get("use_global_labels", label_mapper.is_configured))
         
+        # Tracking visualization options
+        show_track_id = bool(config.get("show_track_id", False))
+        show_trajectory = bool(config.get("show_trajectory", True))
+        
         if label_mapper.is_configured:
             print(f"[MultiModelRenderer] {label_mapper.describe()}")
 
-        # Normalize input format
-        normalized_data = self._normalize_input(input_data)
+        # Normalize input format (handles both Detection and TrackedObject)
+        normalized_data, track_info = self._normalize_input(input_data)
         
         # Get source names (models)
         source_names = list(normalized_data.keys())
@@ -356,7 +424,9 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
 
                 # Draw detections (with label mapping/filtering)
                 dets = normalized_data[source].get(frame_idx, [])
-                for det in dets:
+                frame_track_info = track_info.get(source, {}).get(frame_idx, {})
+                
+                for det_idx, det in enumerate(dets):
                     # Check if this detection should be included
                     include, global_label = label_mapper.should_include(source, det.class_name)
                     if not include:
@@ -364,6 +434,11 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
                     
                     # Determine display label
                     display_label = global_label if (use_global_labels and global_label) else det.class_name
+                    
+                    # Get track info if available
+                    det_track_info = frame_track_info.get(det_idx, {})
+                    track_id = det_track_info.get("track_id")
+                    trajectory = det_track_info.get("trajectory", []) if show_trajectory else []
                     
                     # Scale bbox and create detection with display label
                     x1, y1, x2, y2 = det.bbox
@@ -383,6 +458,10 @@ class MultiModelRenderer(IPipelineStep[Any, Path]):
                         mask_alpha=mask_alpha,
                         mask_contour=mask_contour,
                         mask_contour_thickness=mask_contour_thickness,
+                        track_id=track_id,
+                        show_track_id=show_track_id,
+                        trajectory=trajectory,
+                        scale_xy=(sx, sy),
                     )
 
                 # Draw header

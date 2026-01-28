@@ -1,0 +1,152 @@
+# Tracking Comparison Pipeline
+#
+# Demonstrates per-model independent tracking.
+# Runs the same YOLO model twice:
+#   - yolo_custom_tracked: with tracking enabled
+#   - yolo_custom_raw: without tracking (for comparison)
+# 
+# This shows that tracking is optional and configurable per model instance.
+
+session:
+  video_id: "video_test_1"
+  output_dir: "tracking_comparison_run"
+
+steps:
+  # 1. Load video
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  # 2. Run custom YOLO model WITH tracking
+  - name: yolo_custom_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      task: "segment"
+      conf_threshold: 0.25
+      source_name: "yolo_custom"
+      progress_every: 20
+
+  # 3. Apply tracking to custom model detections
+  - name: yolo_custom_tracked
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_custom_detection"
+    save_output: true
+    params:
+      enabled: true
+      # Track only these classes (comment out to track all)
+      classes_to_track: ["discos", "atleta", "barra"]
+      # Detection thresholds
+      min_det_score: 0.05      # Minimum score to consider
+      high_det_score: 0.25     # High confidence threshold
+      # Track lifecycle
+      max_age_frames: 15       # Frames to keep lost track
+      min_hits_to_confirm: 2   # Hits before confirmed
+      # Association parameters
+      association:
+        iou_weight: 0.5        # Weight for IoU cost
+        center_weight: 0.5     # Weight for center distance cost
+        max_center_dist_px: 150  # Max distance for matching
+        min_iou: 0.01          # Min IoU for matching
+      # Output options
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 50
+
+  # 4. Run COCO model WITH tracking
+  - name: yolo_coco_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8s-seg.pt"
+      task: "segment"
+      conf_threshold: 0.25
+      source_name: "yolo_coco"
+      progress_every: 20
+
+  # 5. Apply tracking to COCO model
+  - name: yolo_coco_tracked
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_coco_detection"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_track: ["person", "frisbee", "sports ball"]
+      min_det_score: 0.05
+      high_det_score: 0.25
+      max_age_frames: 15
+      min_hits_to_confirm: 2
+      association:
+        iou_weight: 0.5
+        center_weight: 0.5
+        max_center_dist_px: 150
+        min_iou: 0.01
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 50
+
+  # 6. Run Pose estimation (no tracking for pose)
+  - name: yolo_pose
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      task: "pose"
+      conf_threshold: 0.3
+      source_name: "yolo_pose"
+      progress_every: 20
+
+  # 7. Generate comparison video with tracking overlays
+  - name: comparison_video
+    module: "multi_model_renderer"
+    enabled: true
+    input_source: "memory"
+    # Note: We pass tracked outputs to the renderer
+    input_from_step: ["yolo_custom_tracked", "yolo_coco_tracked", "yolo_pose"]
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/tracking_comparison_run/tracking_comparison.mp4"
+      panel_width: 640
+      font_scale: 0.5
+      show_confidence: true
+      show_class_id: false
+      progress_every: 20
+      # Mask rendering
+      mask_alpha: 0.45
+      mask_contour: true
+      mask_contour_thickness: 2
+      # Show track IDs (new feature)
+      show_track_id: true
+      # Label mapping
+      label_mapping:
+        atleta:
+          yolo_custom: "atleta"
+          yolo_coco: "person"
+          yolo_pose: "person"
+        disco:
+          yolo_custom: "discos"
+          yolo_coco: "frisbee"
+        barra:
+          yolo_custom: "barra"
+      visualize_labels: ["atleta", "disco", "barra"]
+      use_global_labels: true

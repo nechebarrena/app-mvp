@@ -10,13 +10,14 @@
 1. [Project Overview](#1-project-overview)
 2. [Architecture](#2-architecture)
 3. [Directory Structure](#3-directory-structure)
-4. [Pipeline System](#4-pipeline-system)
-5. [Available Modules](#5-available-modules)
-6. [Model Management](#6-model-management)
-7. [Label Mapping System](#7-label-mapping-system)
-8. [Configuration Examples](#8-configuration-examples)
-9. [Running the Pipeline](#9-running-the-pipeline)
-10. [Current Status & Capabilities](#10-current-status--capabilities)
+4. [Three-Phase Heuristics Architecture](#4-three-phase-heuristics-architecture)
+5. [Pipeline System](#5-pipeline-system)
+6. [Available Modules](#6-available-modules)
+7. [Model Management](#7-model-management)
+8. [Label Mapping System](#8-label-mapping-system)
+9. [Configuration Examples](#9-configuration-examples)
+10. [Running the Pipeline](#10-running-the-pipeline)
+11. [Current Status & Capabilities](#11-current-status--capabilities)
 
 ---
 
@@ -24,15 +25,18 @@
 
 ### Goal
 Build an MVP for mobile video analysis that:
-1. Captures short video clips (10-60s)
+1. Captures short video clips (10-60s) of weightlifting sessions
 2. Processes them using AI (Object Detection + Segmentation + Pose Estimation)
-3. Calculates derived metrics (trajectory, counts, etc.)
-4. Displays results to the user
+3. Tracks objects of interest (disc, athlete, barbell)
+4. Applies domain heuristics (single athlete, single disc, size constraints)
+5. Calculates derived metrics (trajectory, counts, etc.)
+6. Displays results to the user
 
 ### Architecture Philosophy
 - **Python AI Core**: R&D lab and processing engine
 - **Modular Pipeline**: YAML-configured, plug-and-play modules
 - **Multi-Model Support**: Run multiple YOLO models in parallel
+- **Three-Phase Heuristics**: Pre-tracking → Tracking → Post-tracking separation
 - **Label Unification**: Map different model outputs to unified concepts
 
 ---
@@ -54,6 +58,11 @@ Build an MVP for mobile video analysis that:
    - Run detection, segmentation, and pose models in parallel
    - Label mapping for concept unification across models
 
+4. **Three-Phase Heuristics** (NEW)
+   - Pre-tracking: Stateless filters (size, confidence, largest-selector)
+   - Tracking: Temporal association (Kalman, Hungarian)
+   - Post-tracking: Trajectory refinement (smoothing, outlier removal)
+
 ---
 
 ## 3. Directory Structure
@@ -62,15 +71,15 @@ Build an MVP for mobile video analysis that:
 /app-mvp
 ├── /ai-core                    # PYTHON CORE
 │   ├── /configs                # Pipeline YAML configurations
-│   │   ├── compare_models.yaml # Multi-model comparison (main config)
-│   │   ├── lifting_test.yaml   # Full lifting analysis pipeline
+│   │   ├── single_disc_tracking.yaml # Main 3-phase tracking pipeline
+│   │   ├── compare_models.yaml       # Multi-model comparison
+│   │   ├── tracking_comparison.yaml  # Tracking comparison
 │   │   └── ...
 │   ├── /models                 # Model weights
 │   │   ├── /custom             # Custom trained models
 │   │   │   └── best.pt         # Weightlifting segmentation (atleta, barra, discos)
 │   │   └── /pretrained         # Standard pretrained models
 │   │       ├── yolov8s-seg.pt  # COCO segmentation (80 classes)
-│   │       ├── yolov8s.pt      # COCO detection (80 classes)
 │   │       ├── yolov8n-pose.pt # COCO pose estimation
 │   │       └── yolov8n-seg.pt  # COCO segmentation nano
 │   ├── /src
@@ -85,23 +94,29 @@ Build an MVP for mobile video analysis that:
 │   │   │   ├── yolo_segmentor.py   # Legacy segmentation
 │   │   │   └── yolo_pose.py        # Legacy pose
 │   │   ├── /analysis           # Business logic
-│   │   │   ├── merger.py           # Detection merger
-│   │   │   ├── tracking/           # ByteTrack
-│   │   │   ├── disc_calibrator.py  # Disc prior calibration
-│   │   │   ├── disc_fusion_tracker.py # Kalman fusion
-│   │   │   └── lifting_optimizer.py
+│   │   │   ├── detection_filter.py   # PRE-TRACKING heuristics
+│   │   │   ├── model_tracker.py      # TRACKING (Kalman + Hungarian)
+│   │   │   ├── track_refiner.py      # POST-TRACKING refinement
+│   │   │   ├── merger.py             # Detection merger
+│   │   │   └── lifting_optimizer.py  # Domain-specific logic
 │   │   ├── /visualization      # Output renderers
 │   │   │   ├── multi_model_renderer.py # Multi-panel comparison
 │   │   │   └── video_renderer.py       # Single overlay
+│   │   ├── /tools              # Utility tools
+│   │   │   ├── disc_selector.py      # GUI for manual disc selection
+│   │   │   └── selection_loader.py   # Load selection into pipeline
 │   │   └── /pipeline           # Orchestration
 │   │       ├── runner.py
 │   │       └── config.py
 │   ├── run_pipeline.py         # Main entry point
+│   ├── select_disc.py          # Manual disc selection tool
 │   └── pyproject.toml          # Dependencies (uv)
 │
 ├── /data                       # DATA STORAGE (gitignored)
 │   ├── /raw                    # Input videos
 │   ├── /outputs                # Pipeline outputs per run
+│   │   ├── disc_selection.json # Manual disc selection
+│   │   └── single_disc_3phase_run/
 │   └── /processed              # Intermediate files
 │
 ├── /docs                       # Documentation
@@ -116,7 +131,112 @@ Build an MVP for mobile video analysis that:
 
 ---
 
-## 4. Pipeline System
+## 4. Three-Phase Heuristics Architecture
+
+The pipeline separates heuristics into three phases based on what information they need:
+
+### Phase 1: Pre-Tracking (DetectionFilter)
+
+**Responsibility**: Reduce candidates using STATELESS filters (no temporal information).
+
+```
+Detection (YOLO) → [DetectionFilter] → Filtered Detections
+```
+
+**Available Filters**:
+| Filter | Description | Example |
+|--------|-------------|---------|
+| `min_confidence` | Minimum detection score | Reject score < 0.05 |
+| `size_filter` | Filter by expected size | Disc must be ~125px ±30% |
+| `roi_filter` | Static region of interest | Only detections in bottom half |
+| `initial_selector` | Best match in frame 0 | Closest disc to manual selection |
+| `largest_selector` | Keep only largest per class | One athlete (the largest) per frame |
+
+**Example Config**:
+```yaml
+params:
+  min_confidence: 0.05
+  size_filter:
+    enabled: true
+    selection_file: "../data/outputs/disc_selection.json"
+    tolerance: 0.30
+    classes: ["discos"]
+  largest_selector:
+    enabled: true
+    classes: ["atleta"]  # Only one athlete per frame
+```
+
+### Phase 2: Tracking (ModelTracker)
+
+**Responsibility**: Temporal association using Kalman filter and Hungarian algorithm.
+
+```
+Filtered Detections → [ModelTracker] → Tracked Objects
+```
+
+**Features**:
+- **Kalman Filter**: 2D position + velocity model for prediction
+- **Hungarian Assignment**: Optimal matching between tracks and detections
+- **Track Lifecycle**: TENTATIVE → CONFIRMED → LOST → TERMINATED
+- **Single-Object Mode**: For classes where only one object should be tracked
+- **Dual Threshold**: High-confidence for new tracks, low-confidence for maintaining tracks
+
+**Example Config**:
+```yaml
+params:
+  enabled: true
+  classes_to_track: ["discos", "atleta", "barra"]
+  initial_selection:
+    class_name: "discos"
+    selection_file: "../data/outputs/disc_selection.json"
+  min_det_score: 0.05
+  high_det_score: 0.15
+  max_age_frames: 30
+  association:
+    max_center_dist_px: 200
+```
+
+### Phase 3: Post-Tracking (TrackRefiner)
+
+**Responsibility**: Refine trajectories using COMPLETE track information.
+
+```
+Tracked Objects → [TrackRefiner] → Refined Tracked Objects
+```
+
+**Available Refinements**:
+| Refinement | Description |
+|------------|-------------|
+| `smoothing` | Moving average, exponential, or Savitzky-Golay filter |
+| `outlier_removal` | Remove sudden jumps based on velocity statistics |
+| `direction_constraints` | (Future) Validate trajectory direction |
+
+**Example Config**:
+```yaml
+params:
+  enabled: true
+  classes_to_refine: ["discos"]
+  smoothing:
+    enabled: true
+    method: "moving_average"
+    window: 5
+  outlier_removal:
+    enabled: false
+    threshold_std: 3.0
+```
+
+### Why This Separation?
+
+| Aspect | Pre-Tracking | Tracking | Post-Tracking |
+|--------|--------------|----------|---------------|
+| **State** | None | Temporal (Kalman) | Full trajectory |
+| **Purpose** | Reduce noise | Assign IDs | Refine output |
+| **A/B Testing** | Easy | Easy | Easy |
+| **Modularity** | Independent | Independent | Independent |
+
+---
+
+## 5. Pipeline System
 
 ### Configuration Schema
 
@@ -138,24 +258,21 @@ steps:
 
 ### Execution Flow
 
-1. **Linear**: Steps run sequentially, each consuming previous output
-2. **Branching**: Multiple steps can consume the same source (parallel)
-3. **Merging**: A step can consume outputs from multiple steps
-
 ```
-Ingestion ─┬─> YOLO Custom ──┬─> Merger ─> Visualization
-           ├─> YOLO COCO ────┤
-           └─> YOLO Pose ────┘
+Ingestion ─┬─> YOLO Custom ─> Filter ─> Track ─> Refine ─┬─> Visualization
+           ├─> YOLO COCO ──> Filter ─> Track ─> Refine ──┤
+           └─> YOLO Pose ─────────────────────────────────┘
 ```
 
 ---
 
-## 5. Available Modules
+## 6. Available Modules
 
 ### Input Layer
 | Module | Class | Description |
 |--------|-------|-------------|
 | `video_loader` | VideoLoader | Loads video, creates VideoSession |
+| `selection_loader` | SelectionLoader | Loads manual disc selection |
 
 ### Perception
 | Module | Class | Description |
@@ -164,15 +281,14 @@ Ingestion ─┬─> YOLO Custom ──┬─> Merger ─> Visualization
 | `yolo_segmentor` | YoloSegmentor | Legacy segmentation |
 | `yolo_pose` | YoloPoseDetector | Legacy pose |
 
-### Analysis
-| Module | Class | Description |
-|--------|-------|-------------|
-| `detection_merger` | DetectionMerger | Combines detections from branches |
-| `byte_tracker` | ByteTracker | Associates detections across frames |
-| `disc_calibrator` | DiscConsensusCalibrator | Builds disc prior from consensus |
-| `disc_fusion_tracker` | DiscFusionTracker | Kalman + multi-source fusion |
-| `trajectory_cleaner` | TrajectoryCleaner | Filters noisy tracks |
-| `lifting_optimizer` | LiftingSessionOptimizer | Weightlifting-specific logic |
+### Analysis (Three-Phase)
+| Module | Class | Phase | Description |
+|--------|-------|-------|-------------|
+| `detection_filter` | DetectionFilter | **Pre-Tracking** | Size, confidence, largest-selector |
+| `model_tracker` | ModelTracker | **Tracking** | Kalman + Hungarian + single-object |
+| `track_refiner` | TrackRefiner | **Post-Tracking** | Trajectory smoothing |
+| `detection_merger` | DetectionMerger | - | Combines detections from branches |
+| `lifting_optimizer` | LiftingSessionOptimizer | - | Domain-specific logic |
 
 ### Visualization
 | Module | Class | Description |
@@ -180,9 +296,14 @@ Ingestion ─┬─> YOLO Custom ──┬─> Merger ─> Visualization
 | `multi_model_renderer` | MultiModelRenderer | **Multi-panel comparison video** |
 | `video_renderer` | VideoOverlayRenderer | Single overlay video |
 
+### Tools
+| Tool | Description |
+|------|-------------|
+| `select_disc.py` | GUI for manual disc center/radius selection |
+
 ---
 
-## 6. Model Management
+## 7. Model Management
 
 ### Model Directory Structure
 
@@ -193,7 +314,6 @@ ai-core/models/
 │                            # Classes: atleta, barra, discos
 └── pretrained/
     ├── yolov8s-seg.pt       # COCO segmentation small (24MB)
-    ├── yolov8s.pt           # COCO detection small (23MB)
     ├── yolov8n-pose.pt      # COCO pose nano (7MB)
     └── yolov8n-seg.pt       # COCO segmentation nano (7MB)
 ```
@@ -203,12 +323,12 @@ ai-core/models/
 | Model | Type | Classes | Size | Speed |
 |-------|------|---------|------|-------|
 | best.pt | Segment | atleta, barra, discos | 52MB | ~3 fps |
-| yolov8s-seg.pt | Segment | 80 COCO classes | 24MB | ~5 fps |
-| yolov8n-pose.pt | Pose | person (17 keypoints) | 7MB | ~13 fps |
+| yolov8s-seg.pt | Segment | 80 COCO classes | 24MB | ~7 fps |
+| yolov8n-pose.pt | Pose | person (17 keypoints) | 7MB | ~18 fps |
 
 ---
 
-## 7. Label Mapping System
+## 8. Label Mapping System
 
 ### Purpose
 Unify different label names across models into a single concept space.
@@ -216,7 +336,6 @@ Unify different label names across models into a single concept space.
 ### Configuration
 
 ```yaml
-# In visualization params
 label_mapping:
   atleta:                    # Global label
     yolo_custom: "atleta"    # Model-specific mapping
@@ -227,89 +346,85 @@ label_mapping:
     yolo_coco: "frisbee"
   barra:
     yolo_custom: "barra"
-    # No COCO equivalent
 
 visualize_labels: ["atleta", "disco", "barra"]  # Filter
 use_global_labels: true  # Display unified names
 ```
 
-### Features
-- Maps model-specific labels to global concepts
-- Filters output to show only relevant labels
-- Ensures consistent colors across panels
-- Handles missing mappings gracefully
-
 ---
 
-## 8. Configuration Examples
+## 9. Configuration Examples
 
-### Multi-Model Comparison (Current Main Pipeline)
+### Main Pipeline: Single Disc Tracking (3-Phase)
 
 ```yaml
-# configs/compare_models.yaml
+# configs/single_disc_tracking.yaml
 session:
   video_id: "video_test_1"
-  output_dir: "compare_models_run"
+  output_dir: "single_disc_3phase_run"
 
 steps:
+  # Stage 0: Video Loading
   - name: ingestion
     module: "video_loader"
-    enabled: true
-    input_source: "disk"
 
-  - name: yolo_custom
+  # Stage 1: Detection
+  - name: yolo_custom_detection
     module: "yolo_detector"
-    enabled: true
-    input_from_step: "ingestion"
     params:
       model_path: "models/custom/best.pt"
       task: "segment"
       source_name: "yolo_custom"
 
-  - name: yolo_coco
+  - name: yolo_coco_detection
     module: "yolo_detector"
-    enabled: true
-    input_from_step: "ingestion"
     params:
       model_path: "models/pretrained/yolov8s-seg.pt"
       task: "segment"
       source_name: "yolo_coco"
 
-  - name: yolo_pose
-    module: "yolo_detector"
-    enabled: true
-    input_from_step: "ingestion"
+  # Stage 2: Pre-Tracking Filter
+  - name: yolo_custom_filtered
+    module: "detection_filter"
+    input_from_step: "yolo_custom_detection"
     params:
-      model_path: "models/pretrained/yolov8n-pose.pt"
-      task: "pose"
-      source_name: "yolo_pose"
+      size_filter:
+        enabled: true
+        classes: ["discos"]
+        tolerance: 0.30
+      largest_selector:
+        enabled: true
+        classes: ["atleta"]
 
-  - name: comparison_video
-    module: "multi_model_renderer"
-    enabled: true
-    input_from_step: ["yolo_custom", "yolo_coco", "yolo_pose"]
+  # Stage 3: Tracking
+  - name: yolo_custom_tracked
+    module: "model_tracker"
+    input_from_step: "yolo_custom_filtered"
     params:
-      video_source: "../data/raw/video_test_1.mp4"
-      output_filename: "../data/outputs/compare_models_run/comparison.mp4"
-      panel_width: 640
-      mask_alpha: 0.45
-      mask_contour: true
-      label_mapping:
-        atleta:
-          yolo_custom: "atleta"
-          yolo_coco: "person"
-          yolo_pose: "person"
-        disco:
-          yolo_custom: "discos"
-          yolo_coco: "frisbee"
-        barra:
-          yolo_custom: "barra"
-      visualize_labels: ["atleta", "disco", "barra"]
+      initial_selection:
+        class_name: "discos"
+        selection_file: "../data/outputs/disc_selection.json"
+      max_age_frames: 30
+
+  # Stage 4: Post-Tracking Refinement
+  - name: yolo_custom_refined
+    module: "track_refiner"
+    input_from_step: "yolo_custom_tracked"
+    params:
+      smoothing:
+        enabled: true
+        method: "moving_average"
+        window: 5
+
+  # Stage 5: Visualization
+  - name: tracking_video
+    module: "multi_model_renderer"
+    input_from_step: ["yolo_custom_refined", "yolo_coco_refined", "yolo_pose"]
 ```
 
 ---
 
-## 9. Running the Pipeline
+## 10. Running the Pipeline
 
 ### Prerequisites
 - Python 3.10+
@@ -322,67 +437,76 @@ cd ai-core
 uv sync
 ```
 
-### Execution
+### Step 1: Manual Disc Selection
 
 ```bash
 cd ai-core
-PYTHONPATH=src:. uv run python run_pipeline.py configs/compare_models.yaml
+PYTHONPATH=src:. uv run python select_disc.py
+```
+
+This opens a GUI to select the disc center and edge in frame 0. The selection is saved to `data/outputs/disc_selection.json`.
+
+### Step 2: Run Pipeline
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python run_pipeline.py configs/single_disc_tracking.yaml
 ```
 
 ### Output Structure
 
 ```
-data/outputs/compare_models_run/
-├── pipeline.log                    # Execution log
-├── yolo_custom_output.json         # Detections from custom model
-├── yolo_coco_output.json           # Detections from COCO model
-├── yolo_pose_output.json           # Detections from pose model
-├── comparison.mp4                  # Multi-panel video
-└── comparison_video_output.json    # Video path
+data/outputs/single_disc_3phase_run/
+├── pipeline.log                           # Execution log
+├── yolo_custom_detection_output.json      # Raw detections
+├── yolo_custom_filtered_output.json       # After pre-filter
+├── yolo_custom_tracked_output.json        # After tracking
+├── yolo_custom_tracked_output_summary.json # Track statistics
+├── yolo_custom_tracked_output_debug.jsonl  # Per-frame debug
+├── yolo_custom_refined_output.json        # After refinement
+├── tracked_comparison.mp4                 # Multi-panel video
+└── ...
 ```
 
 ---
 
-## 10. Current Status & Capabilities
+## 11. Current Status & Capabilities
 
 ### ✅ Implemented & Working
 
-1. **Multi-Model Pipeline**
+1. **Three-Phase Heuristics Architecture**
+   - DetectionFilter: Size, confidence, largest-selector
+   - ModelTracker: Kalman + Hungarian + single-object mode
+   - TrackRefiner: Moving average smoothing
+
+2. **Multi-Model Pipeline**
    - Run 3+ YOLO models in parallel
    - Generic YoloDetector supports detect/segment/pose
    - Progress indicators with ETA
 
-2. **Multi-Panel Visualization**
+3. **Multi-Panel Visualization**
    - One panel per model
    - Segmentation masks with configurable opacity
-   - Contour outlines for visibility
-   - Frame counter in each panel
+   - Track IDs and trajectories
    - Class legend from frame 0
 
-3. **Label Mapping System**
-   - Unify labels across models
-   - Filter by global labels
-   - Consistent colors for same concept
+4. **Manual Selection Tool**
+   - GUI to select disc center and edge
+   - Saves reference for tracking heuristics
 
-4. **Model Organization**
-   - Clean folder structure (custom/pretrained)
-   - All configs use correct paths
-
-### 🔄 Available but Not Primary Focus
-
-1. **Tracking Pipeline** (ByteTrack, Kalman fusion)
-2. **Disc Calibration** (consensus-based)
-3. **Lifting Optimizer** (domain-specific heuristics)
+5. **Domain Heuristics**
+   - Single disc of interest (size constrained)
+   - Single athlete of interest (largest in frame)
 
 ### 📋 Future Work
 
-1. **Detection Merger Enhancements**
+1. **Temporal Heuristics**
+   - Trajectory direction constraints
+   - Movement pattern validation
+
+2. **Detection Merger**
    - Spatial deduplication when models detect same object
    - Confidence fusion strategies
-
-2. **Temporal Consistency**
-   - Track consistency across frames
-   - Gap filling for missed detections
 
 3. **Mobile Export**
    - CoreML / TFLite conversion
@@ -401,9 +525,13 @@ class Detection(BaseModel):
     mask: Optional[List[List[float]]]        # Polygon points
     keypoints: Optional[List[List[float]]]   # [[x, y, conf], ...]
     source: Optional[str]                    # "yolo_custom", "yolo_coco", etc.
-    radius_px: Optional[float]               # For circle detections
-    shape_score: Optional[float]             # Quality metric
-    debug: Optional[Dict[str, Any]]          # Extra info
+
+class TrackedObject(BaseModel):
+    track_id: int
+    detection: Detection
+    history: List[Tuple[float, float]]       # Center points
+    velocity: Optional[Tuple[float, float]]
+    smoothed_position: Optional[Tuple[float, float]]  # After refinement
 ```
 
 ---

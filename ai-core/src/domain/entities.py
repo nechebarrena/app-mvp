@@ -36,6 +36,7 @@ class TrackedObject(BaseModel):
     detection: Detection
     history: List[Tuple[float, float]] = Field(default_factory=list) # Center points (x, y)
     velocity: Optional[Tuple[float, float]] = None
+    smoothed_position: Optional[Tuple[float, float]] = None  # Position after trajectory smoothing
 
 # --- Runtime Entities ---
 

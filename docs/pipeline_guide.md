@@ -5,7 +5,7 @@ The project uses a configurable pipeline architecture that supports hybrid data 
 
 ### Key Concepts
 1.  **Orchestration via YAML:** Every run is defined by a configuration file.
-2.  **IPipelineStep Interface:** All modules (Input, Perception, Analysis) must implement:
+2.  **IPipelineStep Interface:** All modules must implement:
     *   `run(input, config)`: Core logic.
     *   `save_result(data, path)`: Serialize to disk.
     *   `load_result(path)`: Deserialize from disk.
@@ -13,14 +13,13 @@ The project uses a configurable pipeline architecture that supports hybrid data 
 
 ## Memory vs. Disk Mode
 *   **Memory Mode (Production/Mobile):** Steps pass Python objects (Pydantic entities) directly.
-    *   *Step 1 (Frame)* -> *Step 2 (Detections)* -> *Step 3 (Tracks)*
-*   **Disk Mode (Development/Debug):** Steps serialize their output to JSON/CSV.
-    *   *Step 1* -> `frames/` -> *Step 2* -> `detections.json` -> *Step 3*
+*   **Disk Mode (Development/Debug):** Steps serialize their output to JSON.
 
-This allows developers to "resume" a pipeline from the middle. For example, if you are tweaking the Tracker, you don't need to re-run YOLO (Perception). You just load the detections.json from the previous run.
+This allows developers to "resume" a pipeline from the middle.
 
-## Configuration Schema (pipeline_config.yaml)
+## Configuration Schema
 
+```yaml
 session:
   video_id: "video_001"
   output_dir: "debug_run_1"
@@ -29,23 +28,51 @@ steps:
   - name: my_step
     module: "registered_module_name"
     enabled: true
-    input_source: "memory" # or "disk"
+    input_source: "memory"
+    input_from_step: "previous_step"
     save_output: true
     params:
       threshold: 0.5
+```
 
-## Example: Hybrid Disc Tracking (YOLO + Geometry + Calibration + Fusion)
+## Three-Phase Tracking Pipeline
 
-See the ready-to-run config:
-- ai-core/configs/lifting_hybrid_test.yaml
+The main pipeline follows this structure:
 
-This pipeline runs three perception branches in parallel:
-- yolo_segmentor (segmentation; Detection.source="yolo")
-- yolo_pose (pose; Detection.source="pose")
-- geom_circle_detector (HoughCircles + verification; Detection.source="geom")
+```
+Ingestion -> Detection -> Filter -> Track -> Refine -> Visualization
+```
 
-Then it performs:
-- disc_calibrator: builds disc_prior.json from consensus in the first calibration_frames frames
-- disc_fusion_tracker: Kalman + gating + multi-source fusion, producing:
-  - disc_tracker_debug.jsonl (per-frame)
-  - disc_tracker_debug_summary.json (run summary)
+### Main Config: single_disc_tracking.yaml
+
+This pipeline demonstrates the three-phase heuristics architecture:
+
+1. **Detection**: YOLO models (custom + COCO + pose)
+2. **Pre-Tracking Filter**: Size filter, largest-selector for athlete
+3. **Tracking**: Kalman + Hungarian with single-object mode
+4. **Post-Tracking Refine**: Moving average smoothing
+5. **Visualization**: Multi-panel comparison video
+
+## Running a Pipeline
+
+```bash
+cd ai-core
+
+# Step 1: Select disc (manual)
+PYTHONPATH=src:. uv run python select_disc.py
+
+# Step 2: Run pipeline
+PYTHONPATH=src:. uv run python run_pipeline.py configs/single_disc_tracking.yaml
+```
+
+## Available Modules
+
+| Module | Description |
+|--------|-------------|
+| `video_loader` | Load video files |
+| `yolo_detector` | Generic YOLO (detect/segment/pose) |
+| `detection_filter` | Pre-tracking heuristics |
+| `model_tracker` | Kalman + Hungarian tracking |
+| `track_refiner` | Post-tracking smoothing |
+| `multi_model_renderer` | Multi-panel comparison video |
+| `selection_loader` | Load manual disc selection |

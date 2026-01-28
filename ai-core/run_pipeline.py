@@ -12,11 +12,12 @@ from src.perception.yolo_detector import YoloDetector
 from src.visualization.video_renderer import VideoOverlayRenderer
 from src.visualization.multi_model_renderer import MultiModelRenderer
 from src.analysis.merger import DetectionMerger
-from src.analysis.tracking.byte_tracker import ByteTracker
 from src.analysis.trajectory_cleaner import TrajectoryCleaner
 from src.analysis.lifting_optimizer import LiftingSessionOptimizer
-from src.analysis.disc_calibrator import DiscConsensusCalibrator
-from src.analysis.disc_fusion_tracker import DiscFusionTracker
+from src.analysis.model_tracker import ModelTracker
+from src.analysis.detection_filter import DetectionFilter
+from src.analysis.track_refiner import TrackRefiner
+from src.tools.selection_loader import SelectionLoader
 
 def main():
     parser = argparse.ArgumentParser(description="Run the AI Pipeline")
@@ -39,11 +40,12 @@ def main():
     runner.register_step("video_renderer", VideoOverlayRenderer)
     runner.register_step("multi_model_renderer", MultiModelRenderer)
     runner.register_step("detection_merger", DetectionMerger)
-    runner.register_step("byte_tracker", ByteTracker)
     runner.register_step("trajectory_cleaner", TrajectoryCleaner)
     runner.register_step("lifting_optimizer", LiftingSessionOptimizer)
-    runner.register_step("disc_calibrator", DiscConsensusCalibrator)
-    runner.register_step("disc_fusion_tracker", DiscFusionTracker)
+    runner.register_step("model_tracker", ModelTracker)
+    runner.register_step("detection_filter", DetectionFilter)
+    runner.register_step("track_refiner", TrackRefiner)
+    runner.register_step("selection_loader", SelectionLoader)
     # ----------------
     
     try:
