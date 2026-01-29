@@ -10,6 +10,7 @@ The project uses a configurable pipeline architecture that supports hybrid data 
     *   `save_result(data, path)`: Serialize to disk.
     *   `load_result(path)`: Deserialize from disk.
 3.  **Logging:** Every run generates a `pipeline.log` ensuring full traceability.
+4.  **Variable Substitution:** YAML supports `${variable}` syntax for DRY configuration.
 
 ## Memory vs. Disk Mode
 *   **Memory Mode (Production/Mobile):** Steps pass Python objects (Pydantic entities) directly.
@@ -20,9 +21,19 @@ This allows developers to "resume" a pipeline from the middle.
 ## Configuration Schema
 
 ```yaml
+# Variables for DRY configuration
+variables:
+  video_name: "video_test_1"
+  output_name: "my_run"
+
+# Disc selection config
+disc_selection:
+  mode: "file"  # or "interactive" to launch GUI
+  output_file: "../data/outputs/disc_selection.json"
+
 session:
-  video_id: "video_001"
-  output_dir: "debug_run_1"
+  video_id: "${video_name}"   # Uses variable
+  output_dir: "${output_name}"
 
 steps:
   - name: my_step
@@ -35,44 +46,65 @@ steps:
       threshold: 0.5
 ```
 
-## Three-Phase Tracking Pipeline
+## Full Analysis Pipeline
 
-The main pipeline follows this structure:
+The complete pipeline includes detection, tracking, metrics, and visualization:
 
 ```
-Ingestion -> Detection -> Filter -> Track -> Refine -> Visualization
+Ingestion -> Detection -> Filter -> Track -> Refine -> Video -> Metrics -> Viewer
 ```
 
-### Main Config: single_disc_tracking.yaml
+### Main Config: full_analysis.yaml
 
-This pipeline demonstrates the three-phase heuristics architecture:
+This pipeline demonstrates the full workflow:
 
-1. **Detection**: YOLO models (custom + COCO + pose)
-2. **Pre-Tracking Filter**: Size filter, largest-selector for athlete
-3. **Tracking**: Kalman + Hungarian with single-object mode
-4. **Post-Tracking Refine**: Moving average smoothing
-5. **Visualization**: Multi-panel comparison video
+1. **Ingestion**: Load video, extract metadata (FPS, resolution)
+2. **Detection**: YOLO models (custom + COCO + pose)
+3. **Pre-Tracking Filter**: Size filter, largest-selector for athlete
+4. **Tracking**: Kalman + Hungarian with single-object mode
+5. **Post-Tracking Refine**: Moving average smoothing
+6. **Visualization**: Multi-panel tracking video
+7. **Metrics Calculation**: Position, velocity, acceleration, energy, power
+8. **Metrics Plot**: Static PNG with all metrics
+9. **Interactive Viewer**: GUI for synchronized video + graph analysis
 
 ## Running a Pipeline
 
 ```bash
 cd ai-core
 
-# Step 1: Select disc (manual)
+# Step 1: Select disc (manual) - only needed once per video
 PYTHONPATH=src:. uv run python select_disc.py
 
-# Step 2: Run pipeline
-PYTHONPATH=src:. uv run python run_pipeline.py configs/single_disc_tracking.yaml
+# Step 2: Run full analysis pipeline
+PYTHONPATH=src:. uv run python run_pipeline.py configs/full_analysis.yaml
+
+# Step 3: View results interactively (if not auto-launched)
+PYTHONPATH=src:. uv run python view_analysis.py full_analysis_run
 ```
 
 ## Available Modules
 
 | Module | Description |
 |--------|-------------|
-| `video_loader` | Load video files |
+| `video_loader` | Load video files, extract metadata |
 | `yolo_detector` | Generic YOLO (detect/segment/pose) |
-| `detection_filter` | Pre-tracking heuristics |
+| `detection_filter` | Pre-tracking heuristics (size, largest-selector) |
 | `model_tracker` | Kalman + Hungarian tracking |
 | `track_refiner` | Post-tracking smoothing |
 | `multi_model_renderer` | Multi-panel comparison video |
+| `metrics_calculator` | Physics metrics from trajectory |
+| `metrics_visualizer` | Static plots (PNG) |
+| `interactive_viewer` | Interactive GUI analysis |
 | `selection_loader` | Load manual disc selection |
+
+## Video Metadata Propagation
+
+The pipeline automatically extracts and propagates video metadata:
+
+- `_video_fps`: Frames per second
+- `_video_width`, `_video_height`: Resolution
+- `_video_duration`: Total duration in seconds
+- `_video_total_frames`: Total frame count
+
+These are injected into all step parameters and can be used by modules like `metrics_calculator`.

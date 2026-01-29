@@ -17,6 +17,8 @@ from src.analysis.lifting_optimizer import LiftingSessionOptimizer
 from src.analysis.model_tracker import ModelTracker
 from src.analysis.detection_filter import DetectionFilter
 from src.analysis.track_refiner import TrackRefiner
+from src.analysis.metrics_calculator import MetricsCalculator
+from src.visualization.metrics_visualizer import MetricsVisualizer
 from src.tools.selection_loader import SelectionLoader
 
 def main():
@@ -45,6 +47,8 @@ def main():
     runner.register_step("model_tracker", ModelTracker)
     runner.register_step("detection_filter", DetectionFilter)
     runner.register_step("track_refiner", TrackRefiner)
+    runner.register_step("metrics_calculator", MetricsCalculator)
+    runner.register_step("metrics_visualizer", MetricsVisualizer)
     runner.register_step("selection_loader", SelectionLoader)
     # ----------------
     

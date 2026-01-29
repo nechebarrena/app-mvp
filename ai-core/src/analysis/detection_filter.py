@@ -285,13 +285,25 @@ class DetectionFilter(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[D
         # Try initial_selector config
         initial_cfg = config.get("initial_selector", {})
         
-        # Load from file (both size_filter and initial_selector can use this)
-        selection_file = size_cfg.get("selection_file") or initial_cfg.get("selection_file")
+        # Load from file - check multiple sources:
+        # 1. size_filter.selection_file
+        # 2. initial_selector.selection_file
+        # 3. _selection_file (injected by pipeline from disc_selection config)
+        selection_file = (
+            size_cfg.get("selection_file") or 
+            initial_cfg.get("selection_file") or 
+            config.get("_selection_file")
+        )
+        
         if selection_file:
             selection_path = Path(selection_file)
             if not selection_path.is_absolute():
-                workspace = Path(config.get("_workspace_root", "."))
-                selection_path = workspace / selection_file
+                project_root = Path(config.get("_project_root", "."))
+                # Try relative to ai-core first
+                selection_path = project_root / "ai-core" / selection_file
+                if not selection_path.exists():
+                    # Try relative to project root
+                    selection_path = project_root / selection_file
             
             if selection_path.exists():
                 with open(selection_path, 'r') as f:

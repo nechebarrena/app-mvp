@@ -571,13 +571,16 @@ class ModelTracker(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[Trac
         initial_selection = config.get("initial_selection")
         if initial_selection:
             # Load from file if path provided
-            selection_file = initial_selection.get("selection_file")
+            # Check multiple sources: config, or _selection_file injected by pipeline
+            selection_file = initial_selection.get("selection_file") or config.get("_selection_file")
             if selection_file:
                 selection_path = Path(selection_file)
                 if not selection_path.is_absolute():
-                    # Relative to workspace or config dir
-                    workspace = Path(config.get("_workspace_root", "."))
-                    selection_path = workspace / selection_file
+                    # Relative to project root / ai-core
+                    project_root = Path(config.get("_project_root", "."))
+                    selection_path = project_root / "ai-core" / selection_file
+                    if not selection_path.exists():
+                        selection_path = project_root / selection_file
                 
                 if selection_path.exists():
                     with open(selection_path, 'r') as f:

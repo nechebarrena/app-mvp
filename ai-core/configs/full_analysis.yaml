@@ -1,0 +1,237 @@
+# =============================================================================
+# FULL LIFTING ANALYSIS PIPELINE
+# =============================================================================
+#
+# This pipeline runs complete video analysis:
+# 1. Video ingestion (extracts metadata: fps, resolution, etc.)
+# 2. Disc selection (interactive tool or load from file)
+# 3. YOLO detection & segmentation
+# 4. Pose estimation
+# 5. Pre-tracking filtering (size, initial selection, largest object)
+# 6. Object tracking (Kalman + Hungarian)
+# 7. Post-tracking refinement (smoothing)
+# 8. Metrics calculation (velocity, energy, power) - uses video fps automatically
+# 9. Visualization (video + plots)
+#
+# Run:
+#   cd ai-core
+#   PYTHONPATH=src:. uv run python run_pipeline.py configs/full_analysis.yaml
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# VARIABLES - Define once, use everywhere with ${var_name}
+# -----------------------------------------------------------------------------
+variables:
+  video_name: "video_test_5"          # Video filename (without .mp4)
+  output_name: "full_analysis_run_5"     # Output directory name
+
+# -----------------------------------------------------------------------------
+# DISC SELECTION - Configure how to get initial disc position/size
+# -----------------------------------------------------------------------------
+# Mode options:
+#   - "interactive": Opens GUI tool to manually select disc center and edge
+#   - "file": Uses existing selection file (must exist)
+#
+disc_selection:
+  mode: "interactive"                                           # "interactive" or "file"
+  output_file: "../data/outputs/disc_selection.json"     # Save/load path
+
+# -----------------------------------------------------------------------------
+# SESSION - Core pipeline identifiers
+# -----------------------------------------------------------------------------
+session:
+  video_id: "${video_name}"
+  output_dir: "${output_name}"
+
+# =============================================================================
+# PIPELINE STEPS
+# =============================================================================
+steps:
+  # ============================================================
+  # STAGE 1: Video Loading
+  # Extracts video metadata (fps, resolution, duration, frame count)
+  # This metadata is automatically propagated to all subsequent steps
+  # ============================================================
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  # ============================================================
+  # STAGE 2: Detection (YOLO COCO Segmentation)
+  # ============================================================
+  - name: yolo_coco_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8s-seg.pt"
+      task: "segment"
+      conf_threshold: 0.10
+      source_name: "yolo_coco"
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 3: Pose Estimation
+  # ============================================================
+  - name: yolo_pose
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      task: "pose"
+      conf_threshold: 0.3
+      source_name: "yolo_pose"
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 4: Pre-Tracking Filter
+  # Uses disc_selection.output_file automatically via _selection_file
+  # ============================================================
+  - name: detection_filter
+    module: "detection_filter"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_coco_detection"
+    save_output: true
+    params:
+      min_confidence: 0.05
+      size_filter:
+        enabled: true
+        # Uses _selection_file injected by pipeline
+        tolerance: 0.30
+        classes: ["frisbee"]
+      initial_selector:
+        enabled: true
+        # Uses _selection_file injected by pipeline
+        class_name: "frisbee"
+      largest_selector:
+        enabled: true
+        classes: ["person"]
+
+  # ============================================================
+  # STAGE 5: Tracking
+  # ============================================================
+  - name: disc_tracking
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "detection_filter"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_track: ["frisbee", "person"]
+      initial_selection:
+        class_name: "frisbee"
+        # Uses _selection_file injected by pipeline
+      min_det_score: 0.05
+      high_det_score: 0.15
+      max_age_frames: 30
+      min_hits_to_confirm: 1
+      association:
+        max_center_dist_px: 200
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 6: Post-Tracking Refinement
+  # ============================================================
+  - name: track_refiner
+    module: "track_refiner"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "disc_tracking"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_refine: ["frisbee"]
+      smoothing:
+        enabled: true
+        method: "moving_average"
+        window: 5
+
+  # ============================================================
+  # STAGE 7: Metrics Calculation
+  # FPS and video duration are automatically obtained from video metadata
+  # No need to hardcode fps - it's injected as _video_fps
+  # ============================================================
+  - name: metrics_calculator
+    module: "metrics_calculator"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "track_refiner"
+    save_output: true
+    params:
+      # Physical parameters from separate file
+      physical_params_file: "configs/physical_params.yaml"
+      
+      # Target class to analyze
+      target_class: "frisbee"
+      
+      # Scale reference uses _selection_file automatically
+      
+      # NOTE: fps is NOT needed here - automatically obtained from video metadata
+      # The pipeline injects _video_fps, _video_duration, _video_total_frames
+      
+      # Smoothing before differentiation
+      smooth_window: 5
+
+  # ============================================================
+  # STAGE 8: Metrics Visualization (Static Plots)
+  # ============================================================
+  - name: metrics_visualizer
+    module: "metrics_visualizer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "metrics_calculator"
+    save_output: true
+    params:
+      output_filename: "../data/outputs/${output_name}/metrics_plot.png"
+      figsize: [14, 16]
+      dpi: 150
+      plots:
+        position: true
+        velocity: true
+        acceleration: true
+        energy: true
+        power: true
+
+  # ============================================================
+  # STAGE 9: Video Visualization
+  # ============================================================
+  - name: tracking_video
+    module: "multi_model_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["track_refiner", "yolo_pose"]
+    save_output: true
+    params:
+      video_source: "../data/raw/${video_name}.mp4"
+      output_filename: "../data/outputs/${output_name}/tracking_video.mp4"
+      panel_width: 640
+      font_scale: 0.5
+      show_confidence: true
+      show_track_id: true
+      show_trajectory: true
+      progress_every: 20
+      mask_alpha: 0.45
+      mask_contour: true
+      mask_contour_thickness: 2
+      label_mapping:
+        atleta:
+          yolo_coco: "person"
+          yolo_pose: "person"
+        disco:
+          yolo_coco: "frisbee"
+      visualize_labels: ["atleta", "disco"]
+      use_global_labels: true
