@@ -222,61 +222,63 @@ def build_api_results(
         "total_frames": video_metadata.get("total_frames", 0)
     }
     
-    # Convert tracks
+    # Convert tracks from Dict[frame_idx, List[TrackedObject]]
     tracks = []
     if tracked_objects:
         # Group detections by track_id
         track_dict: Dict[int, Dict] = {}
         
-        for obj in tracked_objects:
-            if not hasattr(obj, 'track_id') or obj.track_id is None:
-                continue
-                
-            tid = obj.track_id
-            if tid not in track_dict:
-                class_name = "unknown"
-                if hasattr(obj, 'detection') and hasattr(obj.detection, 'class_name'):
-                    class_name = obj.detection.class_name
-                elif hasattr(obj, 'class_name'):
-                    class_name = obj.class_name
+        # tracked_objects is Dict[frame_idx, List[TrackedObject]]
+        if isinstance(tracked_objects, dict):
+            for frame_idx, frame_objects in tracked_objects.items():
+                if not isinstance(frame_objects, list):
+                    continue
                     
-                track_dict[tid] = {
-                    "track_id": tid,
-                    "class_name": class_name,
-                    "frames": {},
-                    "trajectory": []
-                }
-            
-            # Get frame index
-            frame_idx = getattr(obj, 'frame_idx', len(track_dict[tid]["frames"]))
-            
-            # Extract bbox
-            det = obj.detection if hasattr(obj, 'detection') else obj
-            bbox = det.bbox if hasattr(det, 'bbox') else [0, 0, 0, 0]
-            
-            track_dict[tid]["frames"][str(frame_idx)] = {
-                "bbox": {
-                    "x1": float(bbox[0]),
-                    "y1": float(bbox[1]),
-                    "x2": float(bbox[2]),
-                    "y2": float(bbox[3])
-                },
-                "confidence": float(det.confidence) if hasattr(det, 'confidence') else 0.5
-            }
-            
-            # Add mask if available (as polygon points)
-            if hasattr(det, 'mask') and det.mask:
-                # Mask might be a numpy array or list of points
-                mask_data = det.mask
-                if hasattr(mask_data, 'tolist'):
-                    mask_data = mask_data.tolist()
-                track_dict[tid]["frames"][str(frame_idx)]["mask"] = mask_data
-            
-            # Add to trajectory from history
-            if hasattr(obj, 'history') and obj.history:
-                track_dict[tid]["trajectory"] = [
-                    [float(p[0]), float(p[1])] for p in obj.history
-                ]
+                for obj in frame_objects:
+                    if not hasattr(obj, 'track_id') or obj.track_id is None:
+                        continue
+                        
+                    tid = obj.track_id
+                    if tid not in track_dict:
+                        class_name = "unknown"
+                        if hasattr(obj, 'detection') and hasattr(obj.detection, 'class_name'):
+                            class_name = obj.detection.class_name
+                        elif hasattr(obj, 'class_name'):
+                            class_name = obj.class_name
+                            
+                        track_dict[tid] = {
+                            "track_id": tid,
+                            "class_name": class_name,
+                            "frames": {},
+                            "trajectory": []
+                        }
+                    
+                    # Extract bbox
+                    det = obj.detection if hasattr(obj, 'detection') else obj
+                    bbox = det.bbox if hasattr(det, 'bbox') else [0, 0, 0, 0]
+                    
+                    track_dict[tid]["frames"][str(frame_idx)] = {
+                        "bbox": {
+                            "x1": float(bbox[0]),
+                            "y1": float(bbox[1]),
+                            "x2": float(bbox[2]),
+                            "y2": float(bbox[3])
+                        },
+                        "confidence": float(det.confidence) if hasattr(det, 'confidence') else 0.5
+                    }
+                    
+                    # Add mask if available (as polygon points)
+                    if hasattr(det, 'mask') and det.mask is not None:
+                        mask_data = det.mask
+                        if hasattr(mask_data, 'tolist'):
+                            mask_data = mask_data.tolist()
+                        track_dict[tid]["frames"][str(frame_idx)]["mask"] = mask_data
+                    
+                    # Build trajectory from history
+                    if hasattr(obj, 'history') and obj.history:
+                        track_dict[tid]["trajectory"] = [
+                            [float(p[0]), float(p[1])] for p in obj.history
+                        ]
         
         tracks = list(track_dict.values())
     
