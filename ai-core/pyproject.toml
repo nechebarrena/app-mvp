@@ -1,7 +1,7 @@
 [project]
 name = "ai-core"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "AI Video Analysis Core - Weightlifting tracking and metrics"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -18,4 +18,12 @@ dependencies = [
     "scipy>=1.16.3",
     "streamlit>=1.52.2",
     "ultralytics>=8.3.243",
+    # FastAPI dependencies
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.2.1",
 ]
+
+[project.scripts]
+ai-core-api = "api.main:run_server"

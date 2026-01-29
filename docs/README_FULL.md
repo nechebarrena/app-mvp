@@ -1,7 +1,7 @@
 # APP-MVP: AI Video Analysis - Complete Documentation
 
 > **Generated:** January 2026  
-> **Version:** 0.3.0 (Metrics & Interactive Viewer)
+> **Version:** 0.4.0 (FastAPI Backend)
 > **Purpose:** Complete reference document for AI review and project understanding
 
 ---
@@ -16,11 +16,12 @@
 6. [Available Modules](#6-available-modules)
 7. [Metrics Calculation System](#7-metrics-calculation-system)
 8. [Interactive Analysis Viewer](#8-interactive-analysis-viewer)
-9. [Model Management](#9-model-management)
-10. [Label Mapping System](#10-label-mapping-system)
-11. [Configuration Examples](#11-configuration-examples)
-12. [Running the Pipeline](#12-running-the-pipeline)
-13. [Current Status & Capabilities](#13-current-status--capabilities)
+9. [FastAPI Backend](#9-fastapi-backend)
+10. [Model Management](#10-model-management)
+11. [Label Mapping System](#11-label-mapping-system)
+12. [Configuration Examples](#12-configuration-examples)
+13. [Running the Pipeline](#13-running-the-pipeline)
+14. [Current Status & Capabilities](#14-current-status--capabilities)
 
 ---
 
@@ -418,7 +419,79 @@ PYTHONPATH=src:. uv run python view_analysis.py full_analysis_run
 
 ---
 
-## 9. Model Management
+## 9. FastAPI Backend
+
+### Overview
+
+The FastAPI backend provides REST endpoints for mobile app integration. It implements
+the **Client-Side Rendering** architecture where:
+
+1. Mobile uploads video once
+2. Server processes with existing pipeline
+3. Server returns lightweight JSON (~200KB vs ~50MB video)
+4. Mobile renders overlays locally
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/videos/upload` | Upload video for processing |
+| `GET` | `/api/v1/videos/{id}/status` | Check processing status |
+| `GET` | `/api/v1/videos/{id}/results` | Get analysis results |
+| `DELETE` | `/api/v1/videos/{id}` | Delete video and results |
+| `GET` | `/api/v1/videos` | List all videos |
+
+### Response Format
+
+```json
+{
+  "video_id": "abc123",
+  "metadata": { "fps": 30, "width": 1080, "height": 1920, ... },
+  "tracks": [
+    {
+      "track_id": 1,
+      "class_name": "disco",
+      "frames": { "0": { "bbox": {...}, "mask": [...] }, ... },
+      "trajectory": [[x, y], ...]
+    }
+  ],
+  "metrics": {
+    "frames": [0, 1, 2, ...],
+    "height_m": [0.5, 0.52, ...],
+    "speed_m_s": [0.0, 0.6, ...],
+    "power_w": [0, 150, ...]
+  },
+  "summary": {
+    "peak_speed_m_s": 4.02,
+    "peak_power_w": 3827
+  }
+}
+```
+
+### Running the Server
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python run_api.py --reload
+```
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### Architecture Benefits
+
+| Aspect | Value |
+|--------|-------|
+| Bandwidth | ~50MB (upload only) vs ~100MB (upload + download) |
+| Flexibility | Mobile can customize rendering |
+| Caching | JSON easily cached |
+| Offline Path | Same render code can use on-device inference |
+
+See [API Guide](api_guide.md) for complete documentation.
+
+---
+
+## 10. Model Management
 
 ### Model Directory Structure
 
@@ -448,7 +521,7 @@ ai-core/models/
 
 ---
 
-## 10. Label Mapping System
+## 11. Label Mapping System
 
 ### Purpose
 Unify different label names across models into a single concept space.
@@ -473,7 +546,7 @@ use_global_labels: true  # Display unified names
 
 ---
 
-## 11. Configuration Examples
+## 12. Configuration Examples
 
 ### Full Analysis Pipeline
 
@@ -556,7 +629,7 @@ steps:
 
 ---
 
-## 12. Running the Pipeline
+## 13. Running the Pipeline
 
 ### Prerequisites
 - Python 3.10+
@@ -610,7 +683,7 @@ data/outputs/full_analysis_run/
 
 ---
 
-## 13. Current Status & Capabilities
+## 14. Current Status & Capabilities
 
 ### ✅ Implemented & Working
 
@@ -638,11 +711,23 @@ data/outputs/full_analysis_run/
    - Single disc of interest (size constrained)
    - Single athlete of interest (largest in frame)
 
-6. **Metrics Calculation** (NEW)
+6. **Metrics Calculation**
    - Position, velocity, acceleration
    - Kinetic, potential, total energy
    - Power calculation
    - Automatic scale from disc size
+
+7. **Interactive Analysis Viewer**
+   - Synchronized video + graphs
+   - Video trimming with dynamic graph updates
+   - Trajectory X-Y plot with velocity colormap
+   - Play/pause/slow-motion controls
+
+8. **FastAPI Backend** (NEW)
+   - REST API for mobile app integration
+   - Async video processing with progress tracking
+   - Client-side rendering architecture (JSON response ~200KB)
+   - Swagger UI documentation at /docs
 
 7. **Interactive Analysis Viewer** (NEW)
    - Synchronized video + graphs
