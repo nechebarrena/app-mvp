@@ -1,0 +1,51 @@
+# Physical Parameters Configuration
+#
+# This file contains the physical parameters used for metrics calculation.
+# Adjust these values according to the actual setup being analyzed.
+#
+# These parameters are used to convert pixel measurements to real-world units
+# and to calculate physical quantities like energy and power.
+
+# Athlete measurements
+athlete_height_m: 1.75      # Athlete height in meters (for future scale reference)
+
+# Disc (plate) specifications
+disc_diameter_m: 0.45       # Standard Olympic disc diameter = 45cm = 0.45m
+disc_weight_kg: 20.0        # Weight of ONE disc in kg (e.g., 20kg plate)
+
+# Barbell specifications  
+bar_weight_kg: 20.0         # Standard Olympic bar = 20kg
+
+# Configuration
+num_discs: 2                # Number of discs on EACH side of the bar
+                            # Total plates = 2 * num_discs (both sides)
+                            # Example: num_discs=2 means 2 plates per side = 4 total
+
+# Physical constants
+gravity: 9.81               # Gravitational acceleration (m/s²)
+
+# =============================================================================
+# NOTES:
+#
+# Total Weight Calculation:
+#   total_weight = bar_weight_kg + (2 * num_discs * disc_weight_kg)
+#   
+#   Example with defaults:
+#   total_weight = 20 + (2 * 2 * 20) = 20 + 80 = 100 kg
+#
+# Scale Reference:
+#   The disc_diameter_m is used as the reference for pixel-to-meter conversion.
+#   We measure the disc radius in pixels from the manual selection, then:
+#   
+#   scale_m_per_px = (disc_diameter_m / 2) / radius_px
+#
+# Common Disc Weights (Olympic):
+#   - 25 kg (red)
+#   - 20 kg (blue)
+#   - 15 kg (yellow)
+#   - 10 kg (green)
+#   - 5 kg (white)
+#   - 2.5 kg (red small)
+#   - 1.25 kg (various)
+#
+# =============================================================================

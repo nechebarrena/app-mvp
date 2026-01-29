@@ -1,0 +1,254 @@
+# Single Disc Tracking Pipeline - Three-Phase Architecture
+#
+# This pipeline demonstrates the separation of heuristics into three phases:
+# 1. PRE-TRACKING (DetectionFilter): Size, confidence, ROI filters
+# 2. TRACKING (ModelTracker): Pure temporal association
+# 3. POST-TRACKING (TrackRefiner): Trajectory smoothing, validation
+#
+# The initial selection (manual disc selection) provides:
+# - Reference center for initial track position
+# - Reference radius for size filtering
+#
+# Run first to select the disc:
+#   PYTHONPATH=src:. uv run python select_disc.py
+#
+# Then run this pipeline:
+#   PYTHONPATH=src:. uv run python run_pipeline.py configs/single_disc_tracking.yaml
+
+session:
+  video_id: "video_test_1"
+  output_dir: "single_disc_3phase_run"
+
+steps:
+  # ============================================================
+  # STAGE 0: Video Loading
+  # ============================================================
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  # ============================================================
+  # STAGE 1: Detection (YOLO models)
+  # ============================================================
+  
+  # Custom YOLO model (trained on our data)
+  - name: yolo_custom_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/custom/best.pt"
+      task: "segment"
+      conf_threshold: 0.10  # Low threshold, filtering done later
+      source_name: "yolo_custom"
+      progress_every: 30
+
+  # COCO pre-trained model
+  - name: yolo_coco_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8s-seg.pt"
+      task: "segment"
+      conf_threshold: 0.10
+      source_name: "yolo_coco"
+      progress_every: 30
+
+  # Pose estimation
+  - name: yolo_pose
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      task: "pose"
+      conf_threshold: 0.3
+      source_name: "yolo_pose"
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 2: PRE-TRACKING - Detection Filtering (per model)
+  # ============================================================
+  
+  # Filter custom model detections
+  - name: yolo_custom_filtered
+    module: "detection_filter"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_custom_detection"
+    save_output: true
+    params:
+      min_confidence: 0.05
+      size_filter:
+        enabled: true
+        selection_file: "../data/outputs/disc_selection.json"
+        tolerance: 0.30  # 30% size tolerance
+        classes: ["discos"]  # Only filter disc by size
+      initial_selector:
+        enabled: true
+        selection_file: "../data/outputs/disc_selection.json"
+        class_name: "discos"
+      largest_selector:
+        enabled: true
+        classes: ["atleta"]  # Only one athlete of interest (the largest)
+      progress_every: 0
+
+  # Filter COCO model detections
+  - name: yolo_coco_filtered
+    module: "detection_filter"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_coco_detection"
+    save_output: true
+    params:
+      min_confidence: 0.05
+      size_filter:
+        enabled: true
+        selection_file: "../data/outputs/disc_selection.json"
+        tolerance: 0.30
+        classes: ["frisbee"]  # COCO equivalent of disc
+      initial_selector:
+        enabled: true
+        selection_file: "../data/outputs/disc_selection.json"
+        class_name: "frisbee"
+      largest_selector:
+        enabled: true
+        classes: ["person"]  # Only one athlete of interest (the largest)
+      progress_every: 0
+
+  # ============================================================
+  # STAGE 3: TRACKING - Pure Temporal Association (per model)
+  # ============================================================
+  
+  # Track custom model detections
+  - name: yolo_custom_tracked
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_custom_filtered"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_track: ["discos", "atleta", "barra"]
+      initial_selection:
+        class_name: "discos"
+        selection_file: "../data/outputs/disc_selection.json"
+      min_det_score: 0.05
+      high_det_score: 0.15
+      max_age_frames: 30
+      min_hits_to_confirm: 1
+      association:
+        max_center_dist_px: 200
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 30
+
+  # Track COCO model detections
+  - name: yolo_coco_tracked
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_coco_filtered"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_track: ["frisbee", "person", "sports ball"]
+      initial_selection:
+        class_name: "frisbee"
+        selection_file: "../data/outputs/disc_selection.json"
+      min_det_score: 0.05
+      high_det_score: 0.15
+      max_age_frames: 30
+      min_hits_to_confirm: 1
+      association:
+        max_center_dist_px: 200
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 4: POST-TRACKING - Trajectory Refinement (per model)
+  # ============================================================
+  
+  # Refine custom model tracks
+  - name: yolo_custom_refined
+    module: "track_refiner"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_custom_tracked"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_refine: ["discos"]  # Only smooth disc trajectory
+      smoothing:
+        enabled: true
+        method: "moving_average"
+        window: 5
+      outlier_removal:
+        enabled: false  # Future: enable to remove jumps
+        threshold_std: 3.0
+
+  # Refine COCO model tracks
+  - name: yolo_coco_refined
+    module: "track_refiner"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "yolo_coco_tracked"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_refine: ["frisbee"]
+      smoothing:
+        enabled: true
+        method: "moving_average"
+        window: 5
+      outlier_removal:
+        enabled: false
+
+  # ============================================================
+  # STAGE 5: Visualization
+  # ============================================================
+  
+  - name: tracking_video
+    module: "multi_model_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["yolo_custom_refined", "yolo_coco_refined", "yolo_pose"]
+    save_output: true
+    params:
+      video_source: "../data/raw/video_test_1.mp4"
+      output_filename: "../data/outputs/single_disc_3phase_run/tracked_comparison.mp4"
+      panel_width: 640
+      font_scale: 0.5
+      show_confidence: true
+      show_track_id: true
+      show_trajectory: true
+      progress_every: 20
+      mask_alpha: 0.45
+      mask_contour: true
+      mask_contour_thickness: 2
+      # Label mapping: unify labels across models
+      label_mapping:
+        atleta:
+          yolo_custom: "atleta"
+          yolo_coco: "person"
+          yolo_pose: "person"
+        disco:
+          yolo_custom: "discos"
+          yolo_coco: "frisbee"
+        barra:
+          yolo_custom: "barra"
+      visualize_labels: ["atleta", "disco", "barra"]
+      use_global_labels: true

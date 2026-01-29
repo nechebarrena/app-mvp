@@ -7,7 +7,7 @@ from enum import Enum
 
 from domain.ports import IPipelineStep
 from domain.entities import TrackedObject, Detection
-from analysis.tracking_utils import KalmanFilter2D, GeometryUtils
+from analysis.geometry_utils import KalmanFilter2D, GeometryUtils
 
 class TrackerState(Enum):
     TRACKING = "tracking"
