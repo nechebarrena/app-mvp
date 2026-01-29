@@ -174,13 +174,13 @@ def create_api_pipeline_config(
     
     # Add initial selection if provided
     if selection_data:
-        # Add size filter to detection_filter step
         for step in config["steps"]:
+            # Detection filter: initial selector to pick best detection in frame 0
             if step["name"] == "detection_filter":
                 step["params"]["size_filter"] = {
-                    "enabled": True,
+                    "enabled": False,  # Disabled - COCO frisbee sizes don't match barbell disc
                     "reference_radius": selection_data.get("radius", 50),
-                    "tolerance": 0.30,
+                    "tolerance": 0.50,
                     "classes": ["frisbee", "sports ball"]
                 }
                 step["params"]["initial_selector"] = {
@@ -188,6 +188,14 @@ def create_api_pipeline_config(
                     "class_name": "frisbee",
                     "reference_center": selection_data.get("center"),
                     "reference_radius": selection_data.get("radius")
+                }
+            
+            # Model tracker: enable single-object mode with initial selection
+            if step["name"] == "disc_tracking":
+                step["params"]["initial_selection"] = {
+                    "class_name": "frisbee",
+                    "center": selection_data.get("center"),
+                    "radius": selection_data.get("radius")
                 }
     
     return config
@@ -401,10 +409,16 @@ async def process_video_task(video_id: str):
         from pipeline.runner import PipelineRunner
         from pipeline.config import PipelineConfig
         
+        # Get selection data from job
+        selection_data = job.selection_data
+        if selection_data:
+            print(f"[Task] Using disc selection: center={selection_data['center']}, radius={selection_data['radius']}")
+        
         # Create pipeline config
         config_dict = create_api_pipeline_config(
             video_path=video_path,
-            output_dir=str(results_dir)
+            output_dir=str(results_dir),
+            selection_data=selection_data
         )
         
         # Write config to YAML file

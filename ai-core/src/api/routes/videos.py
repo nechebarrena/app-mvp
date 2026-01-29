@@ -8,7 +8,7 @@ Endpoints:
 - DELETE /{video_id}: Delete video and results
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from typing import Optional
 from datetime import datetime
@@ -55,13 +55,28 @@ ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
     **Supported formats:** MP4, MOV, AVI, MKV, WebM  
     **Maximum size:** 100MB  
     **Recommended resolution:** 720p or 1080p
+    
+    **Optional disc selection:** Provide center coordinates and radius to enable
+    single-disc tracking heuristics. These values come from manual selection in
+    the first frame of the video.
     """
 )
 async def upload_video(
-    file: UploadFile = File(..., description="Video file to analyze")
+    file: UploadFile = File(..., description="Video file to analyze"),
+    disc_center_x: Optional[float] = Form(None, description="Disc center X coordinate (pixels)"),
+    disc_center_y: Optional[float] = Form(None, description="Disc center Y coordinate (pixels)"),
+    disc_radius: Optional[float] = Form(None, description="Disc radius (pixels)")
 ):
-    """Upload a video for processing."""
+    """Upload a video for processing with optional disc selection."""
     storage = get_storage()
+    
+    # Build selection data if provided
+    selection_data = None
+    if disc_center_x is not None and disc_center_y is not None and disc_radius is not None:
+        selection_data = {
+            "center": [disc_center_x, disc_center_y],
+            "radius": disc_radius
+        }
     
     # Validate file extension
     if file.filename:
@@ -90,16 +105,25 @@ async def upload_video(
         file.filename or "video.mp4"
     )
     
+    # Save selection data if provided
+    if selection_data:
+        storage.save_selection_data(video_id, selection_data)
+    
     # Create job record
-    job = storage.create_job(video_id, video_path)
+    job = storage.create_job(video_id, video_path, selection_data=selection_data)
     
     # Queue for processing
     await enqueue_processing(video_id)
     
+    # Build response message
+    msg = "Video uploaded successfully. Processing will start shortly."
+    if selection_data:
+        msg += f" Disc selection: center=({selection_data['center'][0]:.0f}, {selection_data['center'][1]:.0f}), radius={selection_data['radius']:.0f}"
+    
     return UploadResponse(
         video_id=video_id,
         status=ProcessingStatus.PENDING,
-        message="Video uploaded successfully. Processing will start shortly."
+        message=msg
     )
 
 

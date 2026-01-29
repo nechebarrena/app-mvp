@@ -32,9 +32,24 @@ PYTHONPATH=src:. uv run python run_api.py --host 0.0.0.0
 ### 1. Subir un video
 
 ```bash
+# Upload simple (sin selección de disco)
 curl -X POST "http://localhost:8000/api/v1/videos/upload" \
   -F "file=@/path/to/video.mp4"
+
+# Upload CON selección de disco (recomendado para mejor tracking)
+curl -X POST "http://localhost:8000/api/v1/videos/upload" \
+  -F "file=@/path/to/video.mp4" \
+  -F "disc_center_x=587" \
+  -F "disc_center_y=623" \
+  -F "disc_radius=74"
 ```
+
+**Parámetros de selección del disco** (opcionales pero recomendados):
+- `disc_center_x`: Coordenada X del centro del disco en el frame inicial (píxeles)
+- `disc_center_y`: Coordenada Y del centro del disco en el frame inicial (píxeles)
+- `disc_radius`: Radio del disco en el frame inicial (píxeles)
+
+Estos valores activan heurísticas de tracking single-object que mejoran significativamente la calidad del tracking.
 
 Respuesta:
 ```json
@@ -172,11 +187,34 @@ PYTHONPATH=src:. uv run python run_api.py 2>&1 | tee api.log
 
 ---
 
+## Script de Test Completo
+
+Para probar el flujo completo (selección de disco + upload + resultados):
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python test_api_full.py ../data/raw/video_test_1.mp4
+```
+
+Este script:
+1. Abre la herramienta GUI de selección de disco
+2. Sube el video con la selección al API
+3. Espera el procesamiento
+4. Muestra los resultados
+
+Para usar una selección existente (sin abrir la GUI):
+```bash
+PYTHONPATH=src:. uv run python test_api_full.py ../data/raw/video_test_1.mp4 --skip-selection
+```
+
+---
+
 ## Archivos Clave
 
 | Archivo | Descripción |
 |---------|-------------|
 | `run_api.py` | Script para iniciar el servidor |
+| `test_api_full.py` | Script de test con selección de disco |
 | `src/api/main.py` | Aplicación FastAPI principal |
 | `src/api/routes/videos.py` | Endpoints de video |
 | `src/api/tasks.py` | Procesamiento en background |

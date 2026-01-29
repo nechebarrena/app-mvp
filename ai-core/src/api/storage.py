@@ -39,6 +39,7 @@ class VideoJob:
     message: Optional[str] = None
     error: Optional[str] = None
     results_path: Optional[str] = None
+    selection_data: Optional[Dict[str, Any]] = None  # Disc selection: {center: [x,y], radius: r}
     
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -52,6 +53,9 @@ class VideoJob:
         data['status'] = ProcessingStatus(data['status'])
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        # Handle old jobs without selection_data
+        if 'selection_data' not in data:
+            data['selection_data'] = None
         return cls(**data)
 
 
@@ -143,13 +147,19 @@ class StorageManager:
         
         return video_path
     
-    def create_job(self, video_id: str, video_path: Path) -> VideoJob:
+    def create_job(
+        self, 
+        video_id: str, 
+        video_path: Path,
+        selection_data: Optional[Dict[str, Any]] = None
+    ) -> VideoJob:
         """
         Create a new processing job.
         
         Args:
             video_id: Unique video identifier
             video_path: Path to uploaded video
+            selection_data: Optional disc selection {center: [x,y], radius: r}
             
         Returns:
             Created VideoJob
@@ -161,7 +171,8 @@ class StorageManager:
             video_path=str(video_path),
             created_at=now,
             updated_at=now,
-            message="Video uploaded, waiting for processing"
+            message="Video uploaded, waiting for processing",
+            selection_data=selection_data
         )
         
         with self._lock:
@@ -169,6 +180,40 @@ class StorageManager:
             self._save_jobs()
         
         return job
+    
+    def save_selection_data(self, video_id: str, selection_data: Dict[str, Any]) -> Path:
+        """
+        Save disc selection data to a JSON file.
+        
+        Args:
+            video_id: Video identifier
+            selection_data: {center: [x, y], radius: r}
+            
+        Returns:
+            Path to the saved JSON file
+        """
+        upload_dir = self.upload_dir / video_id
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        selection_file = upload_dir / "disc_selection.json"
+        with open(selection_file, 'w') as f:
+            json.dump(selection_data, f, indent=2)
+        
+        return selection_file
+    
+    def get_selection_data(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """Get selection data for a video (from job or file)."""
+        job = self.get_job(video_id)
+        if job and job.selection_data:
+            return job.selection_data
+        
+        # Try to load from file
+        selection_file = self.upload_dir / video_id / "disc_selection.json"
+        if selection_file.exists():
+            with open(selection_file) as f:
+                return json.load(f)
+        
+        return None
     
     def get_job(self, video_id: str) -> Optional[VideoJob]:
         """Get a job by video ID."""

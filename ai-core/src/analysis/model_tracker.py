@@ -165,6 +165,19 @@ def center_distance(c1: Tuple[float, float], c2: Tuple[float, float]) -> float:
     return np.sqrt((c1[0] - c2[0])**2 + (c1[1] - c2[1])**2)
 
 
+class TrackIdGenerator:
+    """Generates unique track IDs across all trackers."""
+    
+    def __init__(self, start: int = 1):
+        self._next = start
+    
+    def next(self) -> int:
+        """Get next unique track ID."""
+        tid = self._next
+        self._next += 1
+        return tid
+
+
 class SingleObjectTracker:
     """
     Specialized tracker for a SINGLE object with known initial position.
@@ -179,10 +192,17 @@ class SingleObjectTracker:
     This keeps the tracker focused on temporal association only.
     """
     
-    def __init__(self, class_name: str, config: Dict[str, Any], selection: Dict[str, Any]):
+    def __init__(
+        self, 
+        class_name: str, 
+        config: Dict[str, Any], 
+        selection: Dict[str, Any],
+        id_generator: Optional[TrackIdGenerator] = None
+    ):
         self.class_name = class_name
         self.config = config
         self.selection = selection
+        self.id_generator = id_generator or TrackIdGenerator()
         
         # Extract selection data
         center = selection.get("center")
@@ -223,7 +243,7 @@ class SingleObjectTracker:
         kalman.P = np.eye(4) * 10.0  # Low initial uncertainty (we trust the selection)
         
         track = Track(
-            track_id=1,  # Always ID 1 for single object
+            track_id=self.id_generator.next(),  # Unique ID from shared generator
             class_name=self.class_name,
             state=TrackState.CONFIRMED,  # Start as confirmed (trusted selection)
             kalman=kalman,
@@ -312,11 +332,11 @@ class ClassTracker:
     Separation by class avoids absurd switches (e.g., disc ↔ person).
     """
     
-    def __init__(self, class_name: str, config: Dict[str, Any]):
+    def __init__(self, class_name: str, config: Dict[str, Any], id_generator: Optional[TrackIdGenerator] = None):
         self.class_name = class_name
         self.config = config
         self.tracks: List[Track] = []
-        self.next_id = 1
+        self.id_generator = id_generator or TrackIdGenerator()
         self.terminated_tracks: List[Track] = []
         
         # Config with defaults
@@ -484,7 +504,7 @@ class ClassTracker:
         kalman.x = np.array([cx, cy, 0.0, 0.0])
         
         track = Track(
-            track_id=self.next_id,
+            track_id=self.id_generator.next(),
             class_name=self.class_name,
             state=TrackState.TENTATIVE,
             kalman=kalman,
@@ -496,7 +516,6 @@ class ClassTracker:
             last_frame_idx=frame_idx,
             trajectory=[(frame_idx, cx, cy)],
         )
-        self.next_id += 1
         return track
     
     def get_all_tracks(self) -> List[Track]:
@@ -542,6 +561,7 @@ class ModelTracker(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[Trac
         self.single_trackers: Dict[str, SingleObjectTracker] = {}
         self.config: Dict[str, Any] = {}
         self.frame_results: List[Dict] = []  # For JSONL output
+        self.id_generator = TrackIdGenerator()  # Shared across all trackers
     
     def run(self, input_data: Dict[int, List[Detection]], config: Dict[str, Any]) -> Dict[int, List[TrackedObject]]:
         """
@@ -598,7 +618,7 @@ class ModelTracker(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[Trac
             if selection_class:
                 print(f"[ModelTracker] Single-object mode enabled for class '{selection_class}'")
                 self.single_trackers[selection_class] = SingleObjectTracker(
-                    selection_class, config, initial_selection
+                    selection_class, config, initial_selection, self.id_generator
                 )
         
         frame_indices = sorted(input_data.keys())
@@ -636,7 +656,7 @@ class ModelTracker(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[Trac
                 else:
                     # Standard multi-object tracker
                     if class_name not in self.class_trackers:
-                        self.class_trackers[class_name] = ClassTracker(class_name, config)
+                        self.class_trackers[class_name] = ClassTracker(class_name, config, self.id_generator)
                     
                     tracker = self.class_trackers[class_name]
                     updates = tracker.update(frame_idx, class_dets)

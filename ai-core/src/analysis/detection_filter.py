@@ -285,6 +285,17 @@ class DetectionFilter(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[D
         # Try initial_selector config
         initial_cfg = config.get("initial_selector", {})
         
+        # Check for direct reference_center and reference_radius in initial_selector
+        # (Used by API when selection data is passed inline)
+        if initial_cfg.get("reference_center"):
+            center = initial_cfg["reference_center"]
+            self.reference_center = tuple(center) if isinstance(center, list) else center
+            print(f"[DetectionFilter] Using reference center from config: {self.reference_center}")
+        
+        if initial_cfg.get("reference_radius") and not self.reference_radius:
+            self.reference_radius = float(initial_cfg["reference_radius"])
+            print(f"[DetectionFilter] Using reference radius from config: {self.reference_radius:.1f}px")
+        
         # Load from file - check multiple sources:
         # 1. size_filter.selection_file
         # 2. initial_selector.selection_file
@@ -309,14 +320,15 @@ class DetectionFilter(IPipelineStep[Dict[int, List[Detection]], Dict[int, List[D
                 with open(selection_path, 'r') as f:
                     file_data = json.load(f)
                 
+                # File values override config values
                 if file_data.get("center"):
                     center = file_data["center"]
                     self.reference_center = tuple(center) if isinstance(center, list) else center
-                    print(f"[DetectionFilter] Loaded reference center: {self.reference_center}")
+                    print(f"[DetectionFilter] Loaded reference center from file: {self.reference_center}")
                 
                 if file_data.get("radius"):
                     self.reference_radius = float(file_data["radius"])
-                    print(f"[DetectionFilter] Loaded reference radius: {self.reference_radius:.1f}px")
+                    print(f"[DetectionFilter] Loaded reference radius from file: {self.reference_radius:.1f}px")
             else:
                 print(f"[DetectionFilter] Warning: Selection file not found: {selection_path}")
     
