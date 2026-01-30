@@ -364,6 +364,10 @@ metrics_calculator:
 
 The `InteractiveAnalysisViewer` is a PyQt5-based GUI that provides synchronized video and metrics visualization.
 
+**Unified Data Loader**: The viewer supports multiple input sources:
+- **Pipeline output**: CSV metrics + video with tracking overlays
+- **API JSON**: results.json + original video
+
 ### Features
 
 1. **3-Panel Layout**
@@ -407,14 +411,35 @@ The `InteractiveAnalysisViewer` is a PyQt5-based GUI that provides synchronized 
 ### Launching
 
 ```bash
-# Launch for existing run
+# From pipeline output directory
 cd ai-core
-PYTHONPATH=src:. uv run python view_analysis.py full_analysis_run
+PYTHONPATH=src:. uv run python view_analysis.py ../data/outputs/full_analysis_run
 
-# Or via pipeline (auto-launches after metrics calculation)
+# From API results.json
+PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/{video_id}/results.json
+
+# With explicit video path
+PYTHONPATH=src:. uv run python view_analysis.py results.json --video /path/to/video.mp4
+
+# Via pipeline (auto-launches after metrics calculation)
 # Set in YAML:
 #   - name: interactive_viewer
 #     module: "interactive_viewer"
+```
+
+### Data Loader (`visualization/data_loader.py`)
+
+```python
+# Auto-detect source type
+from visualization.data_loader import load_viewer_data
+
+# From directory (auto-detects pipeline or API)
+data = load_viewer_data("../data/outputs/full_analysis_run")
+
+# From API JSON
+data = load_viewer_data("results.json", video_path="/path/to/video.mp4")
+
+# Returns ViewerData with: video_path, metrics_df, fps, metadata
 ```
 
 ---
@@ -426,7 +451,7 @@ PYTHONPATH=src:. uv run python view_analysis.py full_analysis_run
 The FastAPI backend provides REST endpoints for mobile app integration. It implements
 the **Client-Side Rendering** architecture where:
 
-1. Mobile uploads video once
+1. Mobile uploads video once (with optional disc selection parameters)
 2. Server processes with existing pipeline
 3. Server returns lightweight JSON (~200KB vs ~50MB video)
 4. Mobile renders overlays locally
@@ -440,6 +465,29 @@ the **Client-Side Rendering** architecture where:
 | `GET` | `/api/v1/videos/{id}/results` | Get analysis results |
 | `DELETE` | `/api/v1/videos/{id}` | Delete video and results |
 | `GET` | `/api/v1/videos` | List all videos |
+
+### Upload with Disc Selection
+
+The upload endpoint supports optional disc selection parameters for better tracking:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/videos/upload" \
+  -F "file=@video.mp4" \
+  -F "disc_center_x=587" \
+  -F "disc_center_y=623" \
+  -F "disc_radius=74"
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | File | Video file (required) |
+| `disc_center_x` | float | Disc center X in frame 0 (optional) |
+| `disc_center_y` | float | Disc center Y in frame 0 (optional) |
+| `disc_radius` | float | Disc radius in pixels (optional) |
+
+When disc selection is provided, the pipeline activates:
+- **initial_selector**: Picks the detection closest to the reference in frame 0
+- **single-object tracking**: Maintains only one track for the disc class
 
 ### Response Format
 

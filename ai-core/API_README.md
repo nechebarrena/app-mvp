@@ -209,6 +209,24 @@ PYTHONPATH=src:. uv run python test_api_full.py ../data/raw/video_test_1.mp4 --s
 
 ---
 
+## Visualización de Resultados API
+
+El visualizador interactivo soporta tanto salida del pipeline como JSON de la API:
+
+```bash
+# Visualizar resultados de la API
+cd ai-core
+PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/{video_id}/results.json
+
+# El visualizador detecta automáticamente el tipo de fuente y carga:
+# - Video original (desde uploads/)
+# - Métricas desde el JSON
+```
+
+Esto permite validar visualmente los resultados de la API antes de integrar en la app móvil.
+
+---
+
 ## Archivos Clave
 
 | Archivo | Descripción |

@@ -1,155 +1,135 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Interactive Analysis Viewer Launcher
+Launch Interactive Analysis Viewer.
 
-This script launches the interactive visualization tool for analyzing
-lifting metrics after the pipeline has completed.
+Supports multiple input sources:
+1. Pipeline output directory (with CSV metrics + tracking video)
+2. API results.json (with original video)
 
 Usage:
-    PYTHONPATH=src:. uv run python view_analysis.py [run_dir]
-
-Arguments:
-    run_dir: Directory containing pipeline outputs (default: full_analysis_run)
-
-Example:
-    PYTHONPATH=src:. uv run python view_analysis.py full_analysis_run
+    # From pipeline output
+    cd ai-core
+    PYTHONPATH=src:. uv run python view_analysis.py ../data/outputs/full_analysis_run
+    
+    # From API results
+    PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/abc123/results.json
+    
+    # With explicit video path
+    PYTHONPATH=src:. uv run python view_analysis.py results.json --video /path/to/video.mp4
 """
 
 import sys
 import argparse
-import pandas as pd
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from visualization.data_loader import load_viewer_data, print_data_summary
 from visualization.interactive_viewer import launch_interactive_viewer
-
-
-def find_files(run_dir: Path):
-    """Find the required files in the run directory."""
-    # Look for metrics CSV
-    metrics_csv = None
-    for pattern in ["metrics_calculator_output.csv", "*metrics*.csv"]:
-        files = list(run_dir.glob(pattern))
-        if files:
-            metrics_csv = files[0]
-            break
-    
-    # Look for tracking video
-    video_mp4 = None
-    for pattern in ["tracking_video.mp4", "*tracking*.mp4", "*.mp4"]:
-        files = list(run_dir.glob(pattern))
-        if files:
-            video_mp4 = files[0]
-            break
-    
-    return metrics_csv, video_mp4
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Launch interactive analysis viewer",
+        description="Launch Interactive Analysis Viewer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog="""
+Examples:
+  # From pipeline output directory
+  %(prog)s ../data/outputs/full_analysis_run
+  
+  # From API results.json
+  %(prog)s ../data/api/results/abc123/results.json
+  
+  # With explicit video path
+  %(prog)s results.json --video /path/to/video.mp4
+  
+  # From metrics CSV (pipeline)
+  %(prog)s metrics.csv --video tracking_video.mp4
+"""
     )
+    
     parser.add_argument(
-        "run_dir",
-        nargs="?",
-        default="full_analysis_run",
-        help="Directory containing pipeline outputs (default: full_analysis_run)"
+        "source",
+        help="Path to results directory, results.json, or metrics CSV"
     )
+    
     parser.add_argument(
-        "--metrics",
-        type=str,
-        help="Path to metrics CSV file (optional, auto-detected)"
+        "--video", "-v",
+        help="Path to video file (optional for API, required for CSV)"
     )
-    parser.add_argument(
-        "--video",
-        type=str,
-        help="Path to video file (optional, auto-detected)"
-    )
+    
     parser.add_argument(
         "--fps",
         type=float,
-        default=29.5,
-        help="Video FPS (default: 29.5)"
+        help="Video FPS (auto-detected if not provided)"
+    )
+    
+    parser.add_argument(
+        "--title", "-t",
+        default="Análisis de Levantamiento",
+        help="Window title"
+    )
+    
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Don't print data summary"
     )
     
     args = parser.parse_args()
     
-    # Resolve paths
-    base_dir = Path(__file__).parent.parent / "data" / "outputs"
-    run_dir = base_dir / args.run_dir
+    # Resolve source path
+    source_path = Path(args.source)
+    if not source_path.is_absolute():
+        source_path = Path(__file__).parent / args.source
     
-    if not run_dir.exists():
-        # Try as absolute path
-        run_dir = Path(args.run_dir)
-    
-    if not run_dir.exists():
-        print(f"Error: Directory not found: {run_dir}")
-        print(f"Available directories in {base_dir}:")
-        if base_dir.exists():
-            for d in base_dir.iterdir():
-                if d.is_dir():
-                    print(f"  - {d.name}")
+    if not source_path.exists():
+        print(f"Error: Source not found: {source_path}")
         sys.exit(1)
     
-    print(f"[Viewer] Loading from: {run_dir}")
-    
-    # Find files
-    if args.metrics:
-        metrics_csv = Path(args.metrics)
-    else:
-        metrics_csv, _ = find_files(run_dir)
-    
+    # Resolve video path if provided
+    video_path = None
     if args.video:
-        video_mp4 = Path(args.video)
-    else:
-        _, video_mp4 = find_files(run_dir)
+        video_path = Path(args.video)
+        if not video_path.is_absolute():
+            video_path = Path(__file__).parent / args.video
+        video_path = str(video_path)
     
-    # Validate files
-    if metrics_csv is None or not metrics_csv.exists():
-        print(f"Error: Metrics CSV not found in {run_dir}")
-        print("Files in directory:")
-        for f in run_dir.iterdir():
-            print(f"  - {f.name}")
+    try:
+        # Load data
+        print(f"Loading data from: {source_path}")
+        data = load_viewer_data(
+            str(source_path),
+            video_path=video_path,
+            fps=args.fps
+        )
+        
+        if not args.quiet:
+            print_data_summary(data)
+        
+        # Launch viewer
+        print("Launching interactive viewer...")
+        print("(Close window to exit)")
+        
+        launch_interactive_viewer(
+            video_path=data.video_path,
+            metrics_df=data.metrics_df,
+            fps=data.fps,
+            title=f"{args.title} ({data.source_type.upper()})"
+        )
+        
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
         sys.exit(1)
-    
-    if video_mp4 is None or not video_mp4.exists():
-        print(f"Error: Video file not found in {run_dir}")
-        print("Files in directory:")
-        for f in run_dir.iterdir():
-            print(f"  - {f.name}")
+    except ValueError as e:
+        print(f"Error: {e}")
         sys.exit(1)
-    
-    print(f"[Viewer] Metrics: {metrics_csv.name}")
-    print(f"[Viewer] Video: {video_mp4.name}")
-    
-    # Load metrics
-    metrics_df = pd.read_csv(metrics_csv)
-    print(f"[Viewer] Loaded {len(metrics_df)} data points")
-    
-    # Summary
-    if 'speed_m_s' in metrics_df.columns:
-        print(f"[Viewer] Peak speed: {metrics_df['speed_m_s'].max():.2f} m/s")
-    if 'power_w' in metrics_df.columns:
-        print(f"[Viewer] Peak power: {metrics_df['power_w'].max():.0f} W")
-    if 'height_m' in metrics_df.columns:
-        print(f"[Viewer] Max height: {metrics_df['height_m'].max():.2f} m")
-    
-    print("\n[Viewer] Opening interactive viewer...")
-    print("[Viewer] Use the dropdowns to select different graphs")
-    print("[Viewer] Use video controls to navigate")
-    print("[Viewer] Close button or window X to exit\n")
-    
-    # Launch viewer
-    launch_interactive_viewer(
-        str(video_mp4),
-        metrics_df,
-        args.fps,
-        f"Análisis de Levantamiento - {run_dir.name}"
-    )
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
