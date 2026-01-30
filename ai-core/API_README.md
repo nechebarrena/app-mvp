@@ -191,20 +191,38 @@ PYTHONPATH=src:. uv run python run_api.py 2>&1 | tee api.log
 
 Para probar el flujo completo (selección de disco + upload + resultados):
 
+**IMPORTANTE:** El servidor debe estar corriendo en una terminal separada.
+
+### Paso 1: Iniciar el servidor (en una terminal)
 ```bash
 cd ai-core
-PYTHONPATH=src:. uv run python test_api_full.py ../data/raw/video_test_1.mp4
+PYTHONPATH=src:. uv run python run_api.py
+```
+
+### Paso 2: Ejecutar el test (en otra terminal)
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4
 ```
 
 Este script:
-1. Abre la herramienta GUI de selección de disco
-2. Sube el video con la selección al API
-3. Espera el procesamiento
-4. Muestra los resultados
+1. Verifica que el servidor esté corriendo
+2. Abre la herramienta GUI de selección de disco
+3. Sube el video con la selección al API
+4. Espera el procesamiento
+5. Muestra los resultados
 
-Para usar una selección existente (sin abrir la GUI):
+### Opciones adicionales
+
 ```bash
-PYTHONPATH=src:. uv run python test_api_full.py ../data/raw/video_test_1.mp4 --skip-selection
+# Usar una selección existente (sin abrir la GUI)
+PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4 --skip-selection
+
+# Especificar archivo de selección
+PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4 --skip-selection --selection-file /tmp/my_selection.json
+
+# Abrir el visualizador automáticamente al terminar
+PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4 --launch-viewer
 ```
 
 ---

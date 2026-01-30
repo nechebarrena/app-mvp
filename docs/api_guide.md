@@ -31,14 +31,19 @@ POST /api/v1/videos/upload
 Content-Type: multipart/form-data
 
 file: <video_file>
+disc_center_x: <optional float>  # X coordinate of disc center in first frame (pixels)
+disc_center_y: <optional float>  # Y coordinate of disc center in first frame (pixels)
+disc_radius: <optional float>    # Disc radius in first frame (pixels)
 ```
+
+**Note:** The disc selection parameters are highly recommended for better tracking accuracy. They enable single-object tracking heuristics that significantly improve disc detection, especially in the early frames of the video.
 
 **Response:**
 ```json
 {
     "video_id": "abc123def456",
     "status": "pending",
-    "message": "Video uploaded successfully. Processing will start shortly."
+    "message": "Video uploaded successfully. Processing will start shortly. Disc selection: center=(587, 623), radius=74"
 }
 ```
 

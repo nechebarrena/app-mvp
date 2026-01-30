@@ -1,7 +1,7 @@
 # APP-MVP: AI Video Analysis - Complete Documentation
 
-> **Generated:** January 2026  
-> **Version:** 0.4.0 (FastAPI Backend)
+> **Generated:** January 31, 2026  
+> **Version:** 0.5.0 (FastAPI Backend + Interactive Viewer)
 > **Purpose:** Complete reference document for AI review and project understanding
 
 ---
@@ -526,6 +526,39 @@ PYTHONPATH=src:. uv run python run_api.py --reload
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+### Test Script
+
+A complete test script simulates the mobile app workflow:
+
+```bash
+# Terminal 1: Start server
+cd ai-core
+PYTHONPATH=src:. uv run python run_api.py
+
+# Terminal 2: Run test with disc selection GUI
+cd ai-core
+PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4
+```
+
+The test script:
+1. Verifies the server is running
+2. Opens the interactive disc selection tool
+3. Uploads the video with selection coordinates
+4. Polls for processing completion
+5. Displays the results
+
+### Visualizing API Results
+
+The interactive viewer supports both pipeline output and API JSON:
+
+```bash
+# From pipeline output
+PYTHONPATH=src:. uv run python view_analysis.py ../data/outputs/full_analysis_run/
+
+# From API JSON
+PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/{video_id}/results.json
+```
+
 ### Architecture Benefits
 
 | Aspect | Value |
@@ -771,40 +804,45 @@ data/outputs/full_analysis_run/
    - Trajectory X-Y plot with velocity colormap
    - Play/pause/slow-motion controls
 
-8. **FastAPI Backend** (NEW)
+8. **FastAPI Backend**
    - REST API for mobile app integration
    - Async video processing with progress tracking
    - Client-side rendering architecture (JSON response ~200KB)
    - Swagger UI documentation at /docs
+   - Disc selection parameters for improved tracking
+   - Test script with interactive disc selection
 
-7. **Interactive Analysis Viewer** (NEW)
-   - Synchronized video + graphs
-   - Video trimming with dynamic graph updates
-   - Trajectory X-Y plot with velocity colormap
-   - Play/pause/slow-motion controls
-
-8. **YAML Variable Substitution** (NEW)
+9. **YAML Variable Substitution**
    - DRY configuration with `${variable}` syntax
    - Video metadata auto-propagation
 
+10. **Interactive Analysis Viewer**
+    - Supports both pipeline output and API JSON
+    - Synchronized video + graphs
+    - Video trimming with dynamic graph updates
+    - Trajectory X-Y plot with velocity colormap
+    - Play/pause/slow-motion controls
+
 ### 📋 Future Work
 
-1. **FastAPI Backend**
-   - REST API for mobile app integration
-   - Video upload and processing endpoints
-
-2. **Improved Detection**
+1. **Improved Detection**
    - Better training data for black discs
+   - Custom YOLO model refinement
    - Multi-disc handling
 
-3. **Advanced Metrics**
+2. **Advanced Metrics**
    - Rep counting
    - Velocity-based load estimation
    - Fatigue detection
 
+3. **Mobile App Development**
+   - React Native / Flutter client
+   - Client-side overlay rendering
+   - Offline capability
+
 4. **Mobile Export**
    - CoreML / TFLite conversion
-   - Optimized inference
+   - Optimized on-device inference
 
 ---
 

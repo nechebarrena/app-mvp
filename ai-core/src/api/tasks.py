@@ -91,7 +91,7 @@ def create_api_pipeline_config(
                 "params": {
                     "model_path": "models/pretrained/yolov8s-seg.pt",
                     "task": "segment",
-                    "conf_threshold": 0.25,
+                    "conf_threshold": 0.10,
                     "source_name": "yolo_coco",
                     "progress_every": 30
                 }

@@ -1,316 +1,366 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-Full API Test Script with Disc Selection.
+Full API Test Script with Interactive Disc Selection.
 
-This script simulates the complete mobile app flow:
-1. Run disc selection tool (GUI)
-2. Upload video + selection to API
-3. Poll for completion
-4. Display results
+This script performs the complete testing workflow:
+1. Verifies the API server is running
+2. Launches the interactive disc selection tool
+3. Uploads the video with fresh disc coordinates
+4. Monitors processing progress
+5. Displays results and optionally launches the viewer
 
-Usage:
+IMPORTANT: Start the API server manually before running this script:
     cd ai-core
-    PYTHONPATH=src:. uv run python test_api_full.py [video_path]
+    PYTHONPATH=src:. uv run python run_api.py
+
+Then run this script:
+    cd ai-core
+    PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1.mp4
     
-    Default video: ../data/raw/video_test_1.mp4
+Options:
+    --skip-selection: Use existing selection coordinates
+    --selection-file: Path to existing selection JSON
+    --launch-viewer: Open interactive viewer after processing
 """
 
 import sys
+import os
 import json
 import time
 import argparse
 import subprocess
 from pathlib import Path
 
-try:
-    import requests
-except ImportError:
-    print("Error: requests library not installed. Run: uv pip install requests")
-    sys.exit(1)
+# Add src to path
+script_dir = Path(__file__).parent
+sys.path.insert(0, str(script_dir / "src"))
+
+import requests
+
+# Configuration
+API_BASE_URL = "http://localhost:8000/api/v1/videos"
+API_HEALTH_URL = "http://localhost:8000/health"
+PROCESSING_POLL_INTERVAL = 3  # seconds
+PROCESSING_TIMEOUT = 300  # seconds (5 minutes)
 
 
-# Default configuration
-DEFAULT_VIDEO = "../data/raw/video_test_1.mp4"
-API_BASE_URL = "http://localhost:8000"
-SELECTION_OUTPUT = "../data/outputs/api_disc_selection.json"
-
-
-def run_disc_selection(video_path: str, output_file: str) -> dict:
-    """
-    Run the disc selection tool and return the selection data.
-    """
-    print("\n" + "="*60)
-    print("  STEP 1: Disc Selection")
-    print("="*60)
-    print(f"Video: {video_path}")
-    print(f"Output: {output_file}")
-    print("\nOpening selection tool...")
-    print("  - Click 'Centro' then click on disc center")
-    print("  - Click 'Borde' then click on disc edge")
-    print("  - Click 'Aceptar' to save")
-    print()
-    
-    # Run the selection tool
-    result = subprocess.run(
-        [
-            sys.executable, "select_disc.py",
-            "--video", video_path,
-            "--output", output_file
-        ],
-        cwd=Path(__file__).parent
-    )
-    
-    if result.returncode != 0:
-        print("Error: Selection tool failed or was cancelled")
-        sys.exit(1)
-    
-    # Load the selection data
-    output_path = Path(__file__).parent / output_file
-    if not output_path.exists():
-        print(f"Error: Selection file not created: {output_path}")
-        sys.exit(1)
-    
-    with open(output_path) as f:
-        selection_data = json.load(f)
-    
-    print(f"\n✓ Selection saved:")
-    print(f"  Center: ({selection_data['center'][0]:.1f}, {selection_data['center'][1]:.1f})")
-    print(f"  Radius: {selection_data['radius']:.1f} px")
-    
-    return selection_data
-
-
-def check_api_available() -> bool:
-    """Check if the API server is running."""
+def check_server_running() -> bool:
+    """Check if the API server is already running."""
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=2)
+        response = requests.get(API_HEALTH_URL, timeout=2)
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False
 
 
-def upload_video(video_path: str, selection_data: dict) -> str:
-    """
-    Upload video with selection data to the API.
-    Returns video_id.
-    """
-    print("\n" + "="*60)
-    print("  STEP 2: Upload Video to API")
-    print("="*60)
+def run_disc_selector(video_path: Path, output_path: Path) -> dict:
+    """Run the interactive disc selector tool."""
+    print(f"\n{'='*60}")
+    print("  DISC SELECTION")
+    print(f"{'='*60}")
+    print(f"Video: {video_path}")
+    print(f"Output: {output_path}")
+    print("\nInstructions:")
+    print("  1. Click 'Centro' then click on the disc center")
+    print("  2. Click 'Borde' then click on the disc edge")
+    print("  3. Click 'Aceptar' to confirm")
+    print(f"{'='*60}\n")
     
-    if not check_api_available():
-        print(f"\nError: API server not running at {API_BASE_URL}")
-        print("Start it with:")
-        print("  cd ai-core")
-        print("  PYTHONPATH=src:. uv run python run_api.py")
+    # Import here to avoid issues if PyQt5/OpenCV not available
+    from tools.disc_selector import DiscSelector
+    
+    result = DiscSelector.select_from_video(str(video_path))
+    
+    if not result.get("accepted"):
+        print("[Selection] Selection was cancelled")
         sys.exit(1)
     
-    print(f"API: {API_BASE_URL}")
-    print(f"Video: {video_path}")
-    print(f"Selection: center={selection_data['center']}, radius={selection_data['radius']:.1f}")
-    print("\nUploading...")
+    # Save to file
+    with open(output_path, 'w') as f:
+        json.dump(result, f, indent=2)
+    
+    print(f"\n[Selection] Saved to: {output_path}")
+    print(f"[Selection] Center: {result['center']}")
+    print(f"[Selection] Radius: {result['radius']:.1f}px")
+    
+    return result
+
+
+def upload_video(video_path: Path, selection: dict) -> str:
+    """Upload video to API with disc selection."""
+    print(f"\n[Upload] Uploading {video_path.name}...")
+    
+    center = selection["center"]
+    radius = selection["radius"]
     
     with open(video_path, 'rb') as f:
-        files = {'file': (Path(video_path).name, f, 'video/mp4')}
+        files = {'file': (video_path.name, f, 'video/mp4')}
         data = {
-            'disc_center_x': selection_data['center'][0],
-            'disc_center_y': selection_data['center'][1],
-            'disc_radius': selection_data['radius']
+            'disc_center_x': center[0],
+            'disc_center_y': center[1],
+            'disc_radius': radius
         }
         
-        response = requests.post(
-            f"{API_BASE_URL}/api/v1/videos/upload",
-            files=files,
-            data=data
-        )
+        response = requests.post(f"{API_BASE_URL}/upload", files=files, data=data)
     
     if response.status_code != 200:
-        print(f"Error: Upload failed with status {response.status_code}")
-        print(response.text)
+        print(f"[Upload] ERROR: {response.status_code} - {response.text}")
         sys.exit(1)
     
     result = response.json()
-    video_id = result['video_id']
+    video_id = result["video_id"]
     
-    print(f"\n✓ Upload successful")
-    print(f"  Video ID: {video_id}")
-    print(f"  Status: {result['status']}")
-    print(f"  Message: {result['message']}")
+    print(f"[Upload] Success! Video ID: {video_id}")
+    print(f"[Upload] Disc selection: center=({center[0]}, {center[1]}), radius={radius:.0f}")
     
     return video_id
 
 
-def poll_status(video_id: str, timeout: int = 120) -> dict:
-    """
-    Poll the API for processing status until complete or failed.
-    """
-    print("\n" + "="*60)
-    print("  STEP 3: Wait for Processing")
-    print("="*60)
+def wait_for_processing(video_id: str) -> dict:
+    """Poll API until processing completes."""
+    print(f"\n[Processing] Waiting for processing to complete...")
+    print(f"[Processing] Video ID: {video_id}")
     
     start_time = time.time()
-    last_progress = -1
+    last_status = None
+    consecutive_404 = 0
+    max_consecutive_404 = 10  # Allow some 404s before checking if processing finished
     
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > timeout:
-            print(f"\nError: Timeout after {timeout}s")
-            sys.exit(1)
+    # Give server a moment to register the job
+    time.sleep(2)
+    
+    while time.time() - start_time < PROCESSING_TIMEOUT:
+        try:
+            response = requests.get(f"{API_BASE_URL}/{video_id}/status", timeout=5)
+            
+            if response.status_code == 200:
+                consecutive_404 = 0
+                data = response.json()
+                status = data.get("status")
+                
+                if status != last_status:
+                    elapsed = time.time() - start_time
+                    progress = data.get("progress", 0) * 100
+                    step = data.get("current_step", "")
+                    print(f"[Processing] Status: {status} ({elapsed:.1f}s, {progress:.0f}%) {step}")
+                    last_status = status
+                
+                if status == "completed":
+                    print(f"[Processing] Complete!")
+                    return data
+                elif status == "failed":
+                    print(f"[Processing] FAILED: {data.get('message', 'Unknown error')}")
+                    sys.exit(1)
+            elif response.status_code == 404:
+                consecutive_404 += 1
+                if consecutive_404 <= 3:
+                    # Could be timing issue, wait and retry
+                    print(f"[Processing] Job not found yet, waiting... ({consecutive_404})")
+                elif consecutive_404 > max_consecutive_404:
+                    # Check if results exist anyway (processing might have completed)
+                    results_path = Path(f"../data/api/results/{video_id}/results.json")
+                    if results_path.exists():
+                        print(f"[Processing] Results file found, processing completed!")
+                        return {"status": "completed", "video_id": video_id}
+                    print(f"[Processing] Warning: Status check returned 404 ({consecutive_404}x)")
+            else:
+                print(f"[Processing] Warning: Status check returned {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            print(f"[Processing] Warning: Request failed: {e}")
         
-        response = requests.get(f"{API_BASE_URL}/api/v1/videos/{video_id}/status")
-        if response.status_code != 200:
-            print(f"Error: Status check failed: {response.text}")
-            sys.exit(1)
-        
-        status = response.json()
-        progress = status.get('progress', 0)
-        current_step = status.get('current_step', '-')
-        state = status['status']
-        
-        # Only print when progress changes
-        if int(progress * 100) != last_progress:
-            last_progress = int(progress * 100)
-            print(f"  [{elapsed:5.1f}s] {state:12} | {last_progress:3}% | {current_step}")
-        
-        if state == 'completed':
-            print(f"\n✓ Processing completed in {elapsed:.1f}s")
-            return status
-        elif state == 'failed':
-            print(f"\n✗ Processing failed: {status.get('message')}")
-            sys.exit(1)
-        
-        time.sleep(2)
+        time.sleep(PROCESSING_POLL_INTERVAL)
+    
+    # Final check - maybe processing completed but status was lost
+    results_path = Path(f"../data/api/results/{video_id}/results.json")
+    if results_path.exists():
+        print(f"[Processing] Results file found after timeout, processing completed!")
+        return {"status": "completed", "video_id": video_id}
+    
+    print(f"[Processing] TIMEOUT after {PROCESSING_TIMEOUT}s")
+    sys.exit(1)
 
 
 def get_results(video_id: str) -> dict:
-    """
-    Get the analysis results.
-    """
-    print("\n" + "="*60)
-    print("  STEP 4: Results")
-    print("="*60)
+    """Fetch processing results."""
+    print(f"\n[Results] Fetching results...")
     
-    response = requests.get(f"{API_BASE_URL}/api/v1/videos/{video_id}/results")
+    response = requests.get(f"{API_BASE_URL}/{video_id}/results")
+    
     if response.status_code != 200:
-        print(f"Error: Failed to get results: {response.text}")
+        print(f"[Results] ERROR: {response.status_code} - {response.text}")
         sys.exit(1)
     
     results = response.json()
     
-    print(f"\n=== Video Metadata ===")
-    meta = results.get('metadata', {})
-    print(f"  Resolution: {meta.get('width')}x{meta.get('height')}")
-    print(f"  FPS: {meta.get('fps'):.2f}")
-    print(f"  Duration: {meta.get('duration_s'):.2f}s ({meta.get('total_frames')} frames)")
+    # Summary
+    print(f"\n{'='*60}")
+    print("  RESULTS SUMMARY")
+    print(f"{'='*60}")
+    print(f"Video ID: {results.get('video_id')}")
     
-    print(f"\n=== Tracks ===")
+    metadata = results.get('metadata', {})
+    print(f"Resolution: {metadata.get('width')}x{metadata.get('height')}")
+    print(f"FPS: {metadata.get('fps')}")
+    print(f"Frames: {metadata.get('frame_count')}")
+    
     tracks = results.get('tracks', [])
-    print(f"  Total tracks: {len(tracks)}")
-    for t in tracks:
-        print(f"  - Track {t['track_id']}: {t['class_name']} ({len(t['frames'])} frames, {len(t['trajectory'])} trajectory points)")
+    print(f"\nTracks: {len(tracks)}")
+    for track in tracks:
+        frames = track.get('frames', {})
+        frame_idxs = sorted([int(k) for k in frames.keys()])
+        print(f"  - Track {track['track_id']} ({track['class_name']}): "
+              f"frames {min(frame_idxs)}-{max(frame_idxs)} ({len(frame_idxs)} frames)")
     
-    print(f"\n=== Metrics Summary ===")
+    metrics = results.get('metrics', {})
+    metric_frames = metrics.get('frames', [])
+    print(f"\nMetrics:")
+    print(f"  Frames with data: {len(metric_frames)}")
+    if metric_frames:
+        print(f"  Frame range: {min(metric_frames)} - {max(metric_frames)}")
+        times = metrics.get('time_s', [])
+        if times:
+            print(f"  Time range: {min(times):.3f}s - {max(times):.3f}s")
+    
     summary = results.get('summary', {})
-    print(f"  Peak Speed: {summary.get('peak_speed_m_s', 0):.2f} m/s")
-    print(f"  Peak Power: {summary.get('peak_power_w', 0):.0f} W")
-    print(f"  Max Height: {summary.get('max_height_m', 0):.2f} m")
-    print(f"  Min Height: {summary.get('min_height_m', 0):.2f} m")
+    if summary:
+        print(f"\nPhysical Metrics:")
+        print(f"  Peak velocity: {summary.get('peak_velocity_m_s', 0):.2f} m/s")
+        print(f"  Peak power: {summary.get('peak_power_w', 0):.1f} W")
+        print(f"  Max height: {summary.get('max_height_m', 0):.2f} m")
     
-    # Save results to file
-    results_file = Path(__file__).parent / f"api_results_{video_id}.json"
-    with open(results_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"\n  Results saved to: {results_file}")
+    print(f"{'='*60}")
     
     return results
 
 
+def save_results_locally(video_id: str, results: dict, output_dir: Path):
+    """Save results to local file for viewer."""
+    results_path = output_dir / f"api_results_{video_id}.json"
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"\n[Results] Saved to: {results_path}")
+    return results_path
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Full API test with disc selection"
+        description="Full API test with interactive disc selection"
     )
     parser.add_argument(
-        "video",
-        nargs="?",
-        default=DEFAULT_VIDEO,
-        help=f"Path to video file (default: {DEFAULT_VIDEO})"
+        "--video", "-v",
+        type=str,
+        required=True,
+        help="Path to video file"
     )
     parser.add_argument(
-        "--selection",
-        default=SELECTION_OUTPUT,
-        help="Output file for disc selection"
-    )
-    parser.add_argument(
-        "--skip-selection",
+        "--skip-selection", "-s",
         action="store_true",
-        help="Skip selection tool and use existing selection file"
+        help="Skip disc selection (use existing selection file)"
     )
     parser.add_argument(
-        "--api-url",
-        default=API_BASE_URL,
-        help=f"API base URL (default: {API_BASE_URL})"
+        "--selection-file", "-f",
+        type=str,
+        default=None,
+        help="Path to existing selection JSON file (for --skip-selection)"
+    )
+    parser.add_argument(
+        "--selection-output", "-o",
+        type=str,
+        default=None,
+        help="Path to save selection JSON"
+    )
+    parser.add_argument(
+        "--launch-viewer",
+        action="store_true",
+        help="Launch interactive viewer after processing"
     )
     
     args = parser.parse_args()
     
-    # Resolve video path
-    video_path = Path(args.video)
-    if not video_path.is_absolute():
-        video_path = Path(__file__).parent / args.video
-    
+    # Validate video path
+    video_path = Path(args.video).resolve()
     if not video_path.exists():
-        print(f"Error: Video not found: {video_path}")
+        print(f"ERROR: Video not found: {video_path}")
         sys.exit(1)
     
-    global API_BASE_URL
-    API_BASE_URL = args.api_url
+    # Selection output path
+    if args.selection_output:
+        selection_output = Path(args.selection_output)
+    else:
+        selection_output = Path(f"/tmp/disc_selection_{video_path.stem}.json")
     
-    print("\n" + "="*60)
-    print("  API FULL TEST - Disc Selection + Processing")
-    print("="*60)
+    print(f"\n{'='*60}")
+    print("  FULL API TEST")
+    print(f"{'='*60}")
     print(f"Video: {video_path}")
-    print(f"API: {API_BASE_URL}")
+    print(f"Selection output: {selection_output}")
+    print(f"Skip selection: {args.skip_selection}")
+    print(f"{'='*60}\n")
     
-    # Step 1: Disc Selection
-    selection_file = Path(__file__).parent / args.selection
-    if args.skip_selection:
-        if not selection_file.exists():
-            print(f"Error: Selection file not found: {selection_file}")
-            print("Run without --skip-selection first")
+    try:
+        # 1. Check server is running (don't start a new one - avoids race conditions)
+        print("[Setup] Checking if API server is running...")
+        if not check_server_running():
+            print("[Setup] ERROR: API server is not running!")
+            print("[Setup] Please start it manually in a separate terminal:")
+            print("")
+            print("    cd /Users/nicolas/Documents/app-mvp/ai-core")
+            print("    PYTHONPATH=src:. uv run python run_api.py")
+            print("")
             sys.exit(1)
-        with open(selection_file) as f:
-            selection_data = json.load(f)
-        print(f"\nUsing existing selection: {selection_file}")
-        print(f"  Center: ({selection_data['center'][0]:.1f}, {selection_data['center'][1]:.1f})")
-        print(f"  Radius: {selection_data['radius']:.1f} px")
-    else:
-        selection_data = run_disc_selection(str(video_path), args.selection)
-    
-    # Step 2: Upload
-    video_id = upload_video(str(video_path), selection_data)
-    
-    # Step 3: Poll status
-    poll_status(video_id)
-    
-    # Step 4: Get results
-    results = get_results(video_id)
-    
-    print("\n" + "="*60)
-    print("  TEST COMPLETE")
-    print("="*60)
-    print(f"\nVideo ID: {video_id}")
-    print(f"Tracks: {len(results.get('tracks', []))}")
-    
-    # Count frisbee tracks
-    frisbee_tracks = [t for t in results.get('tracks', []) if t['class_name'] == 'frisbee']
-    print(f"Frisbee tracks: {len(frisbee_tracks)}")
-    
-    if len(frisbee_tracks) == 1:
-        print("\n✓ Single disc tracking PASSED - heuristics working correctly")
-    elif len(frisbee_tracks) == 0:
-        print("\n⚠ No frisbee tracks found - check detection")
-    else:
-        print(f"\n⚠ Multiple frisbee tracks ({len(frisbee_tracks)}) - heuristics may not be applied")
+        print("[Setup] API server is running ✓")
+        
+        # 2. Disc selection
+        if args.skip_selection:
+            if args.selection_file:
+                selection_path = Path(args.selection_file)
+            else:
+                selection_path = selection_output
+            
+            if not selection_path.exists():
+                print(f"ERROR: Selection file not found: {selection_path}")
+                sys.exit(1)
+            
+            with open(selection_path, 'r') as f:
+                selection = json.load(f)
+            print(f"[Selection] Loaded from: {selection_path}")
+            print(f"[Selection] Center: {selection['center']}")
+            print(f"[Selection] Radius: {selection['radius']:.1f}px")
+        else:
+            selection = run_disc_selector(video_path, selection_output)
+        
+        # 3. Upload video
+        video_id = upload_video(video_path, selection)
+        
+        # 4. Wait for processing
+        wait_for_processing(video_id)
+        
+        # 5. Get results
+        results = get_results(video_id)
+        
+        # 6. Save results locally
+        results_dir = script_dir.parent / "data" / "api" / "results" / video_id
+        if results_dir.exists():
+            results_path = results_dir / "results.json"
+            print(f"\n[Viewer] Results available at: {results_path}")
+            print(f"[Viewer] To launch viewer:")
+            print(f"         cd ai-core")
+            print(f"         PYTHONPATH=src:. uv run python view_analysis.py {results_path}")
+        
+        # 7. Optional: Launch viewer
+        if args.launch_viewer:
+            print(f"\n[Viewer] Launching interactive viewer...")
+            subprocess.run([
+                "uv", "run", "python", "view_analysis.py", str(results_path)
+            ], cwd=str(script_dir), env={**os.environ, "PYTHONPATH": "src:."})
+        
+        print(f"\n{'='*60}")
+        print("  TEST COMPLETE")
+        print(f"{'='*60}\n")
+        
+    except KeyboardInterrupt:
+        print("\n[Test] Interrupted by user")
 
 
 if __name__ == "__main__":

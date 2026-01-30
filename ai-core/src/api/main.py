@@ -54,13 +54,14 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown tasks.
     """
     # Startup
-    print("[API] Starting up...")
+    print("[API] Starting up...", flush=True)
     
     # Initialize storage
     storage = init_storage()
-    print(f"[API] Storage initialized:")
-    print(f"  - Uploads: {storage.upload_dir}")
-    print(f"  - Results: {storage.results_dir}")
+    print(f"[API] Storage initialized:", flush=True)
+    print(f"  - Uploads: {storage.upload_dir}", flush=True)
+    print(f"  - Results: {storage.results_dir}", flush=True)
+    print(f"  - Jobs loaded: {len(storage._jobs)}", flush=True)
     
     # Start background worker
     start_worker()

@@ -102,14 +102,24 @@ class StorageManager:
     def _load_jobs(self):
         """Load job state from disk on startup."""
         jobs_file = self.results_dir / "jobs.json"
+        print(f"[Storage] Looking for jobs file: {jobs_file}")
         if jobs_file.exists():
             try:
                 with open(jobs_file) as f:
                     jobs_data = json.load(f)
+                loaded_count = 0
                 for video_id, job_data in jobs_data.items():
-                    self._jobs[video_id] = VideoJob.from_dict(job_data)
+                    try:
+                        self._jobs[video_id] = VideoJob.from_dict(job_data)
+                        loaded_count += 1
+                    except Exception as e:
+                        print(f"[Storage] Warning: Could not load job {video_id}: {e}")
+                print(f"[Storage] Loaded {loaded_count} jobs from disk")
+                print(f"[Storage] Job IDs: {list(self._jobs.keys())}")
             except Exception as e:
-                print(f"[Storage] Warning: Could not load jobs: {e}")
+                print(f"[Storage] Warning: Could not load jobs file: {e}")
+        else:
+            print(f"[Storage] No jobs file found at {jobs_file}")
     
     def _save_jobs(self):
         """Persist job state to disk."""
