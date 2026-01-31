@@ -1,7 +1,7 @@
 # APP-MVP: AI Video Analysis - Complete Documentation
 
 > **Generated:** January 31, 2026  
-> **Version:** 0.5.0 (FastAPI Backend + Interactive Viewer)
+> **Version:** 0.6.0 (Control Panel + Ngrok)
 > **Purpose:** Complete reference document for AI review and project understanding
 
 ---
@@ -16,12 +16,13 @@
 6. [Available Modules](#6-available-modules)
 7. [Metrics Calculation System](#7-metrics-calculation-system)
 8. [Interactive Analysis Viewer](#8-interactive-analysis-viewer)
-9. [FastAPI Backend](#9-fastapi-backend)
-10. [Model Management](#10-model-management)
-11. [Label Mapping System](#11-label-mapping-system)
-12. [Configuration Examples](#12-configuration-examples)
-13. [Running the Pipeline](#13-running-the-pipeline)
-14. [Current Status & Capabilities](#14-current-status--capabilities)
+9. [Control Panel (Web Dashboard)](#9-control-panel-web-dashboard)
+10. [FastAPI Backend](#10-fastapi-backend)
+11. [Model Management](#11-model-management)
+12. [Label Mapping System](#12-label-mapping-system)
+13. [Configuration Examples](#13-configuration-examples)
+14. [Running the Pipeline](#14-running-the-pipeline)
+15. [Current Status & Capabilities](#15-current-status--capabilities)
 
 ---
 
@@ -126,8 +127,12 @@ Build an MVP for mobile video analysis that:
 │   │       ├── runner.py       # Pipeline executor (variable substitution)
 │   │       └── config.py       # Configuration models
 │   ├── run_pipeline.py         # Main entry point
+│   ├── run_api.py              # FastAPI server launcher
+│   ├── control_panel.py        # Web dashboard (NEW)
 │   ├── select_disc.py          # Manual disc selection tool
-│   ├── view_analysis.py        # Interactive viewer launcher (NEW)
+│   ├── view_analysis.py        # Interactive viewer launcher
+│   ├── test_api_full.py        # API test script
+│   ├── /templates              # HTML templates for control panel
 │   └── pyproject.toml          # Dependencies (uv)
 │
 ├── /data                       # DATA STORAGE (gitignored)
@@ -444,7 +449,46 @@ data = load_viewer_data("results.json", video_path="/path/to/video.mp4")
 
 ---
 
-## 9. FastAPI Backend
+## 9. Control Panel (Web Dashboard)
+
+A web-based interface for easy system operation without terminal commands.
+
+### Usage
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python control_panel.py
+# Opens browser automatically at http://localhost:5001
+```
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Service Control** | Start/Stop FastAPI and Ngrok with buttons |
+| **Status Indicators** | Visual indicators for running services |
+| **Video Selection** | Browse and select videos from data/raw/ |
+| **Disc Selector** | Open GUI tool to select disc position |
+| **Processing** | One-click video processing with progress bar |
+| **Results** | View summary and open interactive viewer |
+| **Logs** | Real-time log display |
+
+### Architecture
+
+```
+control_panel.py (Flask :5001)
+        │
+        ├── Controls → FastAPI (:8000)
+        ├── Controls → Ngrok tunnel
+        ├── Launches → select_disc.py (PyQt5)
+        └── Launches → view_analysis.py (PyQt5)
+```
+
+The Control Panel manages all other services as subprocesses.
+
+---
+
+## 10. FastAPI Backend
 
 ### Overview
 
@@ -592,7 +636,7 @@ See [API Guide](api_guide.md) and [API_README.md](../ai-core/API_README.md) for 
 
 ---
 
-## 10. Model Management
+## 11. Model Management
 
 ### Model Directory Structure
 
@@ -622,7 +666,7 @@ ai-core/models/
 
 ---
 
-## 11. Label Mapping System
+## 12. Label Mapping System
 
 ### Purpose
 Unify different label names across models into a single concept space.
@@ -647,7 +691,7 @@ use_global_labels: true  # Display unified names
 
 ---
 
-## 12. Configuration Examples
+## 13. Configuration Examples
 
 ### Full Analysis Pipeline
 
@@ -730,7 +774,7 @@ steps:
 
 ---
 
-## 13. Running the Pipeline
+## 14. Running the Pipeline
 
 ### Prerequisites
 - Python 3.10+
@@ -784,7 +828,7 @@ data/outputs/full_analysis_run/
 
 ---
 
-## 14. Current Status & Capabilities
+## 15. Current Status & Capabilities
 
 ### ✅ Implemented & Working
 
@@ -830,18 +874,18 @@ data/outputs/full_analysis_run/
    - Client-side rendering architecture (JSON response ~200KB)
    - Swagger UI documentation at /docs
    - Disc selection parameters for improved tracking
-   - Test script with interactive disc selection
 
-9. **YAML Variable Substitution**
-   - DRY configuration with `${variable}` syntax
-   - Video metadata auto-propagation
+9. **Control Panel (Web Dashboard)** (NEW)
+   - One-command startup: `python control_panel.py`
+   - Web interface at http://localhost:5001
+   - Start/Stop FastAPI and Ngrok with buttons
+   - Video selection and disc selector integration
+   - Processing progress and results display
+   - Real-time logs
 
-10. **Interactive Analysis Viewer**
-    - Supports both pipeline output and API JSON
-    - Synchronized video + graphs
-    - Video trimming with dynamic graph updates
-    - Trajectory X-Y plot with velocity colormap
-    - Play/pause/slow-motion controls
+10. **YAML Variable Substitution**
+    - DRY configuration with `${variable}` syntax
+    - Video metadata auto-propagation
 
 ### 📋 Future Work
 

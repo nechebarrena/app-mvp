@@ -1,6 +1,26 @@
 # FastAPI - Guía Rápida
 
-## Iniciar el Servidor
+## Opción Recomendada: Control Panel (Interfaz Web)
+
+La forma más fácil de usar el sistema es con el Control Panel web:
+
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python control_panel.py
+```
+
+Esto:
+1. Abre automáticamente el navegador en `http://localhost:5001`
+2. Proporciona botones para iniciar/detener FastAPI y Ngrok
+3. Permite seleccionar videos y abrir la herramienta de selección de disco
+4. Muestra progreso de procesamiento en tiempo real
+5. Permite abrir el visualizador de resultados
+
+**¡Un solo comando para todo!**
+
+---
+
+## Opción Manual: Iniciar el Servidor
 
 ```bash
 cd ai-core

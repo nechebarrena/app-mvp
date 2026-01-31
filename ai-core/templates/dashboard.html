@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Pipeline Control Panel</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --error: #ef4444;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+            background: linear-gradient(135deg, var(--accent), #ff9a9e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .header p {
+            color: var(--text-secondary);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+        
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .card h2::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+        
+        .service-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--error);
+        }
+        
+        .status-dot.running {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+        
+        .service-name {
+            font-weight: 600;
+        }
+        
+        .service-url {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+        
+        .service-url a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        
+        .service-url a:hover {
+            text-decoration: underline;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: #000;
+        }
+        
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+        
+        .btn-large {
+            padding: 12px 24px;
+            font-size: 1rem;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .video-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .video-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: var(--bg-card);
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .video-item:hover {
+            background: var(--border);
+        }
+        
+        .video-item.selected {
+            border: 2px solid var(--accent);
+        }
+        
+        .video-name {
+            font-weight: 500;
+        }
+        
+        .video-size {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .selection-info {
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .selection-info.empty {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        
+        .selection-coords {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .coord-box {
+            background: var(--bg-primary);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .coord-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .coord-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .progress-container {
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--success));
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .logs-container {
+            background: #000;
+            border-radius: 8px;
+            padding: 12px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .log-entry {
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        
+        .log-time {
+            color: #666;
+        }
+        
+        .log-info { color: #60a5fa; }
+        .log-success { color: var(--success); }
+        .log-warning { color: var(--warning); }
+        .log-error { color: var(--error); }
+        
+        .jobs-list {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .job-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-card);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+        
+        .job-id {
+            font-family: monospace;
+        }
+        
+        .job-status {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        
+        .job-status.completed {
+            background: var(--success);
+            color: #000;
+        }
+        
+        .job-status.processing {
+            background: var(--warning);
+            color: #000;
+        }
+        
+        .job-status.failed {
+            background: var(--error);
+            color: white;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .results-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .result-box {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .result-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        
+        .result-value {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--success);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎛️ AI Pipeline Control Panel</h1>
+        <p>Video Analysis Development Dashboard</p>
+    </div>
+    
+    <div class="container">
+        <!-- Services Card -->
+        <div class="card">
+            <h2>Services</h2>
+            
+            <div class="service-row">
+                <div class="service-info">
+                    <div class="status-dot" id="fastapi-status"></div>
+                    <div>
+                        <div class="service-name">FastAPI Server</div>
+                        <div class="service-url">http://localhost:8000</div>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-success" onclick="startFastAPI()" id="btn-start-fastapi">Start</button>
+                    <button class="btn-danger" onclick="stopFastAPI()" id="btn-stop-fastapi">Stop</button>
+                </div>
+            </div>
+            
+            <div class="service-row">
+                <div class="service-info">
+                    <div class="status-dot" id="ngrok-status"></div>
+                    <div>
+                        <div class="service-name">Ngrok Tunnel</div>
+                        <div class="service-url" id="ngrok-url">Not running</div>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-success" onclick="startNgrok()" id="btn-start-ngrok">Start</button>
+                    <button class="btn-danger" onclick="stopNgrok()" id="btn-stop-ngrok">Stop</button>
+                </div>
+            </div>
+            
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="btn-primary btn-large" onclick="startAllServices()">▶ Start All Services</button>
+                <button class="btn-secondary btn-large" onclick="stopAllServices()">⏹ Stop All</button>
+            </div>
+        </div>
+        
+        <!-- Video Selection Card -->
+        <div class="card">
+            <h2>Video Selection</h2>
+            
+            <div class="video-list" id="video-list">
+                <div style="color: var(--text-secondary); padding: 20px; text-align: center;">
+                    Loading videos...
+                </div>
+            </div>
+            
+            <button class="btn-secondary btn-large" onclick="refreshVideos()">🔄 Refresh List</button>
+        </div>
+        
+        <!-- Disc Selection Card -->
+        <div class="card">
+            <h2>Disc Selection</h2>
+            
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">
+                Select the disc position in the first frame for accurate tracking.
+            </p>
+            
+            <button class="btn-primary btn-large" onclick="openDiscSelector()" id="btn-disc-selector">
+                🎯 Open Selection Tool
+            </button>
+            
+            <div class="selection-info" id="selection-info">
+                <span class="empty">No disc selected yet</span>
+            </div>
+        </div>
+        
+        <!-- Processing Card -->
+        <div class="card">
+            <h2>Processing</h2>
+            
+            <div id="processing-ready">
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                    Selected: <strong id="selected-video-name">None</strong>
+                </p>
+                
+                <button class="btn-primary btn-large" onclick="processVideo()" id="btn-process">
+                    🚀 Process Video
+                </button>
+            </div>
+            
+            <div id="processing-progress" class="hidden">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="progress-status">Processing...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="processing-complete" class="hidden">
+                <div style="text-align: center; padding: 15px;">
+                    <span style="font-size: 2rem;">✅</span>
+                    <p style="margin-top: 10px; color: var(--success);">Processing Complete!</p>
+                </div>
+                
+                <div class="results-summary" id="results-summary"></div>
+                
+                <button class="btn-primary btn-large" onclick="openViewer()">
+                    📊 Open Interactive Viewer
+                </button>
+            </div>
+        </div>
+        
+        <!-- Recent Jobs Card -->
+        <div class="card">
+            <h2>Recent Jobs</h2>
+            
+            <div class="jobs-list" id="jobs-list">
+                <div style="color: var(--text-secondary); padding: 10px; text-align: center;">
+                    Loading...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Logs Card -->
+        <div class="card">
+            <h2>Logs</h2>
+            
+            <div class="logs-container" id="logs-container">
+                <div class="log-entry log-info">[--:--:--] Waiting for logs...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentStatus = {};
+        let selectedVideoPath = null;
+        let pollingInterval = null;
+        
+        // ============================================================
+        // Status Polling
+        // ============================================================
+        
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                currentStatus = await response.json();
+                
+                // Update FastAPI status
+                const fastapiDot = document.getElementById('fastapi-status');
+                fastapiDot.classList.toggle('running', currentStatus.fastapi.running);
+                
+                // Update Ngrok status
+                const ngrokDot = document.getElementById('ngrok-status');
+                ngrokDot.classList.toggle('running', currentStatus.ngrok.running);
+                
+                const ngrokUrl = document.getElementById('ngrok-url');
+                if (currentStatus.ngrok.url) {
+                    ngrokUrl.innerHTML = `<a href="${currentStatus.ngrok.url}" target="_blank">${currentStatus.ngrok.url}</a>`;
+                } else {
+                    ngrokUrl.textContent = 'Not running';
+                }
+                
+                // Update selection info
+                if (currentStatus.current_selection) {
+                    updateSelectionDisplay(currentStatus.current_selection);
+                }
+                
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+        
+        async function updateLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                
+                const container = document.getElementById('logs-container');
+                container.innerHTML = logs.map(log => 
+                    `<div class="log-entry log-${log.level}">[${log.time}] ${log.message}</div>`
+                ).join('');
+                
+                container.scrollTop = container.scrollHeight;
+            } catch (e) {
+                console.error('Logs update failed:', e);
+            }
+        }
+        
+        async function updateJobs() {
+            try {
+                const response = await fetch('/api/jobs');
+                const jobs = await response.json();
+                
+                const container = document.getElementById('jobs-list');
+                if (jobs.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-secondary); padding: 10px; text-align: center;">No jobs yet</div>';
+                } else {
+                    container.innerHTML = jobs.map(job => `
+                        <div class="job-item">
+                            <span class="job-id">${job.video_id}</span>
+                            <span class="job-status ${job.status}">${job.status}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Jobs update failed:', e);
+            }
+        }
+        
+        // ============================================================
+        // Service Control
+        // ============================================================
+        
+        async function startFastAPI() {
+            setButtonLoading('btn-start-fastapi', true);
+            await fetch('/api/fastapi/start', { method: 'POST' });
+            setButtonLoading('btn-start-fastapi', false);
+            updateStatus();
+            updateLogs();
+        }
+        
+        async function stopFastAPI() {
+            setButtonLoading('btn-stop-fastapi', true);
+            await fetch('/api/fastapi/stop', { method: 'POST' });
+            setButtonLoading('btn-stop-fastapi', false);
+            updateStatus();
+            updateLogs();
+        }
+        
+        async function startNgrok() {
+            setButtonLoading('btn-start-ngrok', true);
+            await fetch('/api/ngrok/start', { method: 'POST' });
+            setButtonLoading('btn-start-ngrok', false);
+            updateStatus();
+            updateLogs();
+        }
+        
+        async function stopNgrok() {
+            setButtonLoading('btn-stop-ngrok', true);
+            await fetch('/api/ngrok/stop', { method: 'POST' });
+            setButtonLoading('btn-stop-ngrok', false);
+            updateStatus();
+            updateLogs();
+        }
+        
+        async function startAllServices() {
+            const btn = document.querySelector('.btn-primary.btn-large');
+            btn.textContent = '⏳ Starting...';
+            btn.disabled = true;
+            
+            await fetch('/api/services/start-all', { method: 'POST' });
+            
+            btn.textContent = '▶ Start All Services';
+            btn.disabled = false;
+            
+            updateStatus();
+            updateLogs();
+        }
+        
+        async function stopAllServices() {
+            await fetch('/api/services/stop-all', { method: 'POST' });
+            updateStatus();
+            updateLogs();
+        }
+        
+        // ============================================================
+        // Video Selection
+        // ============================================================
+        
+        async function refreshVideos() {
+            try {
+                const response = await fetch('/api/videos');
+                const videos = await response.json();
+                
+                const container = document.getElementById('video-list');
+                if (videos.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-secondary); padding: 20px; text-align: center;">No videos found in data/raw/</div>';
+                } else {
+                    container.innerHTML = videos.map(video => `
+                        <div class="video-item ${video.path === selectedVideoPath ? 'selected' : ''}" 
+                             onclick="selectVideo('${video.path}', '${video.name}')">
+                            <span class="video-name">📹 ${video.name}</span>
+                            <span class="video-size">${video.size_mb} MB</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Videos refresh failed:', e);
+            }
+        }
+        
+        async function selectVideo(path, name) {
+            selectedVideoPath = path;
+            
+            await fetch('/api/select-video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: path })
+            });
+            
+            document.getElementById('selected-video-name').textContent = name;
+            
+            // Update visual selection
+            document.querySelectorAll('.video-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.target.closest('.video-item').classList.add('selected');
+            
+            // Reset selection and processing state
+            document.getElementById('selection-info').innerHTML = '<span class="empty">No disc selected yet</span>';
+            showProcessingReady();
+            
+            updateLogs();
+        }
+        
+        // ============================================================
+        // Disc Selection
+        // ============================================================
+        
+        async function openDiscSelector() {
+            if (!selectedVideoPath) {
+                alert('Please select a video first');
+                return;
+            }
+            
+            const btn = document.getElementById('btn-disc-selector');
+            btn.textContent = '⏳ Opening...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/open-disc-selector', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success && result.selection) {
+                    updateSelectionDisplay(result.selection);
+                }
+            } catch (e) {
+                console.error('Disc selector failed:', e);
+            }
+            
+            btn.textContent = '🎯 Open Selection Tool';
+            btn.disabled = false;
+            
+            updateLogs();
+        }
+        
+        function updateSelectionDisplay(selection) {
+            const container = document.getElementById('selection-info');
+            const center = selection.center || [];
+            const radius = selection.radius || 0;
+            
+            container.innerHTML = `
+                <div style="color: var(--success); margin-bottom: 8px;">✓ Disc selected</div>
+                <div class="selection-coords">
+                    <div class="coord-box">
+                        <div class="coord-label">Center X</div>
+                        <div class="coord-value">${center[0]?.toFixed(0) || '-'}</div>
+                    </div>
+                    <div class="coord-box">
+                        <div class="coord-label">Center Y</div>
+                        <div class="coord-value">${center[1]?.toFixed(0) || '-'}</div>
+                    </div>
+                    <div class="coord-box">
+                        <div class="coord-label">Radius</div>
+                        <div class="coord-value">${radius.toFixed(1)}</div>
+                    </div>
+                    <div class="coord-box">
+                        <div class="coord-label">Diameter</div>
+                        <div class="coord-value">${(radius * 2).toFixed(0)}px</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // ============================================================
+        // Processing
+        // ============================================================
+        
+        async function processVideo() {
+            if (!selectedVideoPath) {
+                alert('Please select a video first');
+                return;
+            }
+            
+            if (!currentStatus.fastapi?.running) {
+                alert('Please start FastAPI server first');
+                return;
+            }
+            
+            showProcessingProgress();
+            
+            try {
+                const response = await fetch('/api/process-video', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Start polling for progress
+                    startProgressPolling();
+                } else {
+                    alert('Failed to start processing: ' + result.message);
+                    showProcessingReady();
+                }
+            } catch (e) {
+                console.error('Process failed:', e);
+                alert('Processing failed');
+                showProcessingReady();
+            }
+            
+            updateLogs();
+        }
+        
+        function startProgressPolling() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/job-status');
+                    const status = await response.json();
+                    
+                    const progress = (status.progress || 0) * 100;
+                    document.getElementById('progress-fill').style.width = progress + '%';
+                    document.getElementById('progress-percent').textContent = progress.toFixed(0) + '%';
+                    document.getElementById('progress-status').textContent = status.current_step || status.status || 'Processing...';
+                    
+                    if (status.status === 'completed') {
+                        clearInterval(pollingInterval);
+                        await showResults();
+                    } else if (status.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        alert('Processing failed: ' + (status.message || 'Unknown error'));
+                        showProcessingReady();
+                    }
+                } catch (e) {
+                    console.error('Progress poll failed:', e);
+                }
+                
+                updateLogs();
+                updateJobs();
+            }, 2000);
+        }
+        
+        async function showResults() {
+            showProcessingComplete();
+            
+            try {
+                const response = await fetch('/api/job-results');
+                const results = await response.json();
+                
+                if (results.summary) {
+                    const summary = results.summary;
+                    document.getElementById('results-summary').innerHTML = `
+                        <div class="result-box">
+                            <div class="result-label">Tracks</div>
+                            <div class="result-value">${results.tracks?.length || 0}</div>
+                        </div>
+                        <div class="result-box">
+                            <div class="result-label">Peak Speed</div>
+                            <div class="result-value">${(summary.peak_speed_m_s || 0).toFixed(2)} m/s</div>
+                        </div>
+                        <div class="result-box">
+                            <div class="result-label">Peak Power</div>
+                            <div class="result-value">${(summary.peak_power_w || 0).toFixed(0)} W</div>
+                        </div>
+                        <div class="result-box">
+                            <div class="result-label">Max Height</div>
+                            <div class="result-value">${(summary.max_height_m || 0).toFixed(2)} m</div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('Results fetch failed:', e);
+            }
+        }
+        
+        async function openViewer() {
+            await fetch('/api/open-viewer', { method: 'POST' });
+            updateLogs();
+        }
+        
+        function showProcessingReady() {
+            document.getElementById('processing-ready').classList.remove('hidden');
+            document.getElementById('processing-progress').classList.add('hidden');
+            document.getElementById('processing-complete').classList.add('hidden');
+        }
+        
+        function showProcessingProgress() {
+            document.getElementById('processing-ready').classList.add('hidden');
+            document.getElementById('processing-progress').classList.remove('hidden');
+            document.getElementById('processing-complete').classList.add('hidden');
+            document.getElementById('progress-fill').style.width = '0%';
+        }
+        
+        function showProcessingComplete() {
+            document.getElementById('processing-ready').classList.add('hidden');
+            document.getElementById('processing-progress').classList.add('hidden');
+            document.getElementById('processing-complete').classList.remove('hidden');
+        }
+        
+        // ============================================================
+        // Utilities
+        // ============================================================
+        
+        function setButtonLoading(id, loading) {
+            const btn = document.getElementById(id);
+            btn.disabled = loading;
+            if (loading) {
+                btn.dataset.originalText = btn.textContent;
+                btn.textContent = '...';
+            } else if (btn.dataset.originalText) {
+                btn.textContent = btn.dataset.originalText;
+            }
+        }
+        
+        // ============================================================
+        // Initialization
+        // ============================================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStatus();
+            updateLogs();
+            updateJobs();
+            refreshVideos();
+            
+            // Poll status every 3 seconds
+            setInterval(() => {
+                updateStatus();
+                updateLogs();
+            }, 3000);
+            
+            // Poll jobs every 10 seconds
+            setInterval(updateJobs, 10000);
+        });
+    </script>
+</body>
+</html>
