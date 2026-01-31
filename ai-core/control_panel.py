@@ -499,7 +499,30 @@ def signal_handler(sig, frame):
         subprocess.run(f"lsof -ti:{FASTAPI_PORT} | xargs kill -9", shell=True)
     sys.exit(0)
 
+def kill_previous_instance():
+    """Kill any previous Control Panel instance on our port."""
+    try:
+        result = subprocess.run(
+            f"lsof -ti:{CONTROL_PANEL_PORT}",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        if result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid:
+                    subprocess.run(f"kill -9 {pid}", shell=True)
+            print(f"[Control Panel] Killed previous instance on port {CONTROL_PANEL_PORT}")
+            time.sleep(1)
+    except Exception as e:
+        pass  # Ignore errors, port might just be free
+
+
 if __name__ == '__main__':
+    # Kill any previous instance first
+    kill_previous_instance()
+    
     signal.signal(signal.SIGINT, signal_handler)
     
     print(f"""
