@@ -51,17 +51,11 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 800px;
             margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            flex-direction: column;
             gap: 20px;
-        }
-        
-        @media (max-width: 900px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
         }
         
         .card {
@@ -74,18 +68,28 @@
         .card h2 {
             font-size: 1.1rem;
             margin-bottom: 15px;
-            color: var(--text-secondary);
+            color: var(--text-primary);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
         
-        .card h2::before {
-            content: '';
-            width: 4px;
-            height: 20px;
+        .step-number {
             background: var(--accent);
-            border-radius: 2px;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        
+        .step-number.optional {
+            background: var(--border);
         }
         
         .service-row {
@@ -354,8 +358,9 @@
             color: white;
         }
         
-        .full-width {
-            grid-column: 1 / -1;
+        .divider {
+            border-top: 1px solid var(--border);
+            margin: 10px 0;
         }
         
         .results-summary {
@@ -396,9 +401,9 @@
     </div>
     
     <div class="container">
-        <!-- Services Card -->
+        <!-- Step 1: Services Card -->
         <div class="card">
-            <h2>Services</h2>
+            <h2><span class="step-number">1</span> Start Services</h2>
             
             <div class="service-row">
                 <div class="service-info">
@@ -434,9 +439,9 @@
             </div>
         </div>
         
-        <!-- Video Selection Card -->
+        <!-- Step 2: Video Selection Card -->
         <div class="card">
-            <h2>Video Selection</h2>
+            <h2><span class="step-number">2</span> Select Video</h2>
             
             <div class="video-list" id="video-list">
                 <div style="color: var(--text-secondary); padding: 20px; text-align: center;">
@@ -447,9 +452,9 @@
             <button class="btn-secondary btn-large" onclick="refreshVideos()">🔄 Refresh List</button>
         </div>
         
-        <!-- Disc Selection Card -->
+        <!-- Step 3: Disc Selection Card -->
         <div class="card">
-            <h2>Disc Selection</h2>
+            <h2><span class="step-number">3</span> Select Disc Position</h2>
             
             <p style="color: var(--text-secondary); margin-bottom: 10px;">
                 Select the disc position in the first frame for accurate tracking.
@@ -464,9 +469,9 @@
             </div>
         </div>
         
-        <!-- Processing Card -->
+        <!-- Step 4: Processing Card -->
         <div class="card">
-            <h2>Processing</h2>
+            <h2><span class="step-number">4</span> Process Video</h2>
             
             <div id="processing-ready">
                 <p style="color: var(--text-secondary); margin-bottom: 15px;">
@@ -504,9 +509,9 @@
             </div>
         </div>
         
-        <!-- Recent Jobs Card -->
+        <!-- Info: Recent Jobs Card -->
         <div class="card">
-            <h2>Recent Jobs</h2>
+            <h2><span class="step-number optional">📋</span> Recent Jobs</h2>
             
             <div class="jobs-list" id="jobs-list">
                 <div style="color: var(--text-secondary); padding: 10px; text-align: center;">
@@ -515,9 +520,9 @@
             </div>
         </div>
         
-        <!-- Logs Card -->
+        <!-- Info: Logs Card -->
         <div class="card">
-            <h2>Logs</h2>
+            <h2><span class="step-number optional">📜</span> Logs</h2>
             
             <div class="logs-container" id="logs-container">
                 <div class="log-entry log-info">[--:--:--] Waiting for logs...</div>

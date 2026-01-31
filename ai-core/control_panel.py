@@ -339,9 +339,9 @@ def open_disc_selector():
         env = os.environ.copy()
         env["PYTHONPATH"] = "src:."
         
-        # Run the selector tool
+        # Run the selector tool (positional args: video_path output_path)
         process = subprocess.Popen(
-            ["uv", "run", "python", "select_disc.py", state.current_video, "-o", selection_file],
+            ["uv", "run", "python", "select_disc.py", state.current_video, selection_file],
             cwd=str(AI_CORE_DIR),
             env=env
         )
