@@ -168,6 +168,68 @@ curl -s "http://localhost:8000/api/v1/videos/$VIDEO_ID/results" | python3 -m jso
 
 ---
 
+## Acceso Remoto con Ngrok (Internet)
+
+Para acceder al servidor desde **cualquier lugar** (no solo la misma red WiFi):
+
+### Requisitos previos
+```bash
+# Instalar ngrok (si no está instalado)
+brew install ngrok
+
+# Configurar token (obtener en https://ngrok.com)
+ngrok config add-authtoken TU_TOKEN
+```
+
+### Iniciar el túnel
+
+```bash
+# Terminal 1: Servidor FastAPI
+cd ai-core
+PYTHONPATH=src:. uv run python run_api.py
+
+# Terminal 2: Túnel Ngrok
+ngrok http 8000
+```
+
+Ngrok mostrará una URL pública como:
+```
+https://abc123xyz.ngrok-free.app
+```
+
+### Usar la API remotamente
+
+```bash
+# Health check
+curl -sk "https://TU-URL.ngrok-free.app/health" \
+  -H "ngrok-skip-browser-warning: true"
+
+# Upload video con selección de disco
+curl -sk -X POST "https://TU-URL.ngrok-free.app/api/v1/videos/upload" \
+  -H "ngrok-skip-browser-warning: true" \
+  -F "file=@video.mp4" \
+  -F "disc_center_x=470" \
+  -F "disc_center_y=1436" \
+  -F "disc_radius=123"
+
+# Verificar status
+curl -sk "https://TU-URL.ngrok-free.app/api/v1/videos/{video_id}/status" \
+  -H "ngrok-skip-browser-warning: true"
+
+# Obtener resultados
+curl -sk "https://TU-URL.ngrok-free.app/api/v1/videos/{video_id}/results" \
+  -H "ngrok-skip-browser-warning: true"
+```
+
+### Notas importantes
+
+- **Header requerido**: `ngrok-skip-browser-warning: true` evita la página de advertencia
+- **URL cambia**: En plan gratuito, la URL cambia cada vez que reinicias ngrok
+- **Limitaciones**: Plan gratuito permite 1 túnel simultáneo
+- **Performance**: La latencia depende de tu conexión a internet
+
+---
+
 ## Troubleshooting
 
 ### Puerto en uso

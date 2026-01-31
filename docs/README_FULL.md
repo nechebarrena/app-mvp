@@ -559,6 +559,26 @@ PYTHONPATH=src:. uv run python view_analysis.py ../data/outputs/full_analysis_ru
 PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/{video_id}/results.json
 ```
 
+### Remote Access with Ngrok
+
+For accessing the server from anywhere (not just local network):
+
+```bash
+# Terminal 1: FastAPI server
+cd ai-core && PYTHONPATH=src:. uv run python run_api.py
+
+# Terminal 2: Ngrok tunnel
+ngrok http 8000
+# Provides URL like: https://abc123.ngrok-free.app
+```
+
+Mobile app (or any client) can then access:
+- `https://abc123.ngrok-free.app/api/v1/videos/upload`
+- `https://abc123.ngrok-free.app/api/v1/videos/{id}/status`
+- `https://abc123.ngrok-free.app/api/v1/videos/{id}/results`
+
+**Note:** Include header `ngrok-skip-browser-warning: true` in all requests.
+
 ### Architecture Benefits
 
 | Aspect | Value |
@@ -568,7 +588,7 @@ PYTHONPATH=src:. uv run python view_analysis.py ../data/api/results/{video_id}/r
 | Caching | JSON easily cached |
 | Offline Path | Same render code can use on-device inference |
 
-See [API Guide](api_guide.md) for complete documentation.
+See [API Guide](api_guide.md) and [API_README.md](../ai-core/API_README.md) for complete documentation.
 
 ---
 
