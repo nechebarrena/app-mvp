@@ -332,8 +332,41 @@ Esto permite validar visualmente los resultados de la API antes de integrar en l
 | Archivo | Descripción |
 |---------|-------------|
 | `run_api.py` | Script para iniciar el servidor |
+| `control_panel.py` | Interfaz web para controlar servicios |
 | `test_api_full.py` | Script de test con selección de disco |
 | `src/api/main.py` | Aplicación FastAPI principal |
 | `src/api/routes/videos.py` | Endpoints de video |
 | `src/api/tasks.py` | Procesamiento en background |
 | `src/api/storage.py` | Gestión de archivos |
+
+---
+
+## Integración con App Móvil
+
+Ver **`docs/MOBILE_APP_SPEC.md`** para la especificación completa de la app móvil.
+
+### Checklist para Desarrollo Móvil
+
+1. ✅ Servidor funcionando (FastAPI)
+2. ✅ Ngrok configurado (acceso remoto)
+3. ✅ Control Panel muestra "Ready for Mobile"
+4. ✅ Endpoint de upload acepta parámetros de selección
+5. ✅ Respuesta JSON incluye tracks + métricas
+
+### Headers Requeridos
+
+```kotlin
+// Ktor (Kotlin)
+header("ngrok-skip-browser-warning", "true")
+header(HttpHeaders.ContentType, ContentType.MultiPart.FormData)
+```
+
+```swift
+// URLSession (Swift)
+request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+```
+
+```javascript
+// Axios (React Native)
+axios.defaults.headers.common['ngrok-skip-browser-warning'] = 'true';
+```

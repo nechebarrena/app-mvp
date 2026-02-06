@@ -899,14 +899,49 @@ data/outputs/full_analysis_run/
    - Velocity-based load estimation
    - Fatigue detection
 
-3. **Mobile App Development**
-   - React Native / Flutter client
+3. **Mobile App Development** (See `MOBILE_APP_SPEC.md`)
+   - Kotlin Multiplatform (Android first, iOS later)
    - Client-side overlay rendering
-   - Offline capability
+   - Disc selection on device
+   - Offline capability (Phase 2)
 
 4. **Mobile Export**
    - CoreML / TFLite conversion
    - Optimized on-device inference
+
+---
+
+## 16. Mobile App Integration
+
+The system is designed for mobile app integration. See **`docs/MOBILE_APP_SPEC.md`** for complete specification.
+
+### Quick Reference
+
+**Server Setup:**
+```bash
+cd ai-core
+PYTHONPATH=src:. uv run python control_panel.py
+# Start FastAPI + Ngrok from the web UI
+```
+
+**Mobile → Server Contract:**
+```
+POST /api/v1/videos/upload
+  - file: video/mp4
+  - disc_center_x, disc_center_y, disc_radius (optional)
+
+GET /api/v1/videos/{id}/status
+  - Poll every 2-3 seconds
+
+GET /api/v1/videos/{id}/results
+  - JSON with tracks, metrics, summary
+```
+
+**Key Headers:**
+```
+ngrok-skip-browser-warning: true
+Content-Type: multipart/form-data
+```
 
 ---
 

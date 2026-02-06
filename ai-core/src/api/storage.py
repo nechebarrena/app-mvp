@@ -40,6 +40,7 @@ class VideoJob:
     error: Optional[str] = None
     results_path: Optional[str] = None
     selection_data: Optional[Dict[str, Any]] = None  # Disc selection: {center: [x,y], radius: r}
+    original_filename: Optional[str] = None  # Original uploaded filename
     
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -53,9 +54,11 @@ class VideoJob:
         data['status'] = ProcessingStatus(data['status'])
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        # Handle old jobs without selection_data
+        # Handle old jobs without selection_data or original_filename
         if 'selection_data' not in data:
             data['selection_data'] = None
+        if 'original_filename' not in data:
+            data['original_filename'] = None
         return cls(**data)
 
 
@@ -161,7 +164,8 @@ class StorageManager:
         self, 
         video_id: str, 
         video_path: Path,
-        selection_data: Optional[Dict[str, Any]] = None
+        selection_data: Optional[Dict[str, Any]] = None,
+        original_filename: Optional[str] = None
     ) -> VideoJob:
         """
         Create a new processing job.
@@ -170,6 +174,7 @@ class StorageManager:
             video_id: Unique video identifier
             video_path: Path to uploaded video
             selection_data: Optional disc selection {center: [x,y], radius: r}
+            original_filename: Original filename of uploaded video
             
         Returns:
             Created VideoJob
@@ -182,7 +187,8 @@ class StorageManager:
             created_at=now,
             updated_at=now,
             message="Video uploaded, waiting for processing",
-            selection_data=selection_data
+            selection_data=selection_data,
+            original_filename=original_filename
         )
         
         with self._lock:

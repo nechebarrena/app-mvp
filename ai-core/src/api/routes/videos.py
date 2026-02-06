@@ -110,7 +110,12 @@ async def upload_video(
         storage.save_selection_data(video_id, selection_data)
     
     # Create job record
-    job = storage.create_job(video_id, video_path, selection_data=selection_data)
+    job = storage.create_job(
+        video_id, 
+        video_path, 
+        selection_data=selection_data,
+        original_filename=file.filename or "video.mp4"
+    )
     
     # Queue for processing
     await enqueue_processing(video_id)

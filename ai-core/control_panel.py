@@ -122,6 +122,27 @@ def api_status():
     else:
         state.ngrok_url = None
     
+    # Get job statistics
+    job_stats = {"pending": 0, "processing": 0, "completed_today": 0}
+    jobs_file = RESULTS_DIR / "jobs.json"
+    if jobs_file.exists():
+        try:
+            with open(jobs_file) as f:
+                jobs_data = json.load(f)
+            today = datetime.now().date().isoformat()
+            for job in jobs_data.values():
+                status = job.get("status", "")
+                if status == "pending":
+                    job_stats["pending"] += 1
+                elif status == "processing":
+                    job_stats["processing"] += 1
+                elif status == "completed":
+                    created = job.get("created_at", "")
+                    if created.startswith(today):
+                        job_stats["completed_today"] += 1
+        except:
+            pass
+    
     return jsonify({
         "fastapi": {
             "running": fastapi_running,
@@ -133,7 +154,8 @@ def api_status():
         },
         "current_video": state.current_video,
         "current_selection": state.current_selection,
-        "current_job_id": state.current_job_id
+        "current_job_id": state.current_job_id,
+        "job_stats": job_stats
     })
 
 @app.route('/api/logs')
@@ -168,9 +190,25 @@ def api_jobs():
                                    key=lambda x: x[1].get('created_at', ''), 
                                    reverse=True)[:10]:
                 # Extract more info from job
-                original_filename = job.get("original_filename", "unknown.mp4")
-                disc_selection = job.get("disc_selection")
-                has_selection = disc_selection is not None and disc_selection.get("center") is not None
+                # Try original_filename first, then derive from video_path
+                original_filename = job.get("original_filename")
+                if not original_filename:
+                    # Try to extract from video_path (e.g., ".../input.mp4" or original name)
+                    video_path = job.get("video_path", "")
+                    if video_path:
+                        # The video_id might give us info, or check if there's a better source
+                        original_filename = f"video_{vid[:8]}.mp4"
+                    else:
+                        original_filename = "unknown.mp4"
+                
+                # Check for disc selection - can be "selection_data" or "disc_selection"
+                disc_selection = job.get("selection_data") or job.get("disc_selection")
+                has_selection = (
+                    disc_selection is not None and 
+                    isinstance(disc_selection, dict) and
+                    disc_selection.get("center") is not None and
+                    len(disc_selection.get("center", [])) >= 2
+                )
                 
                 jobs.append({
                     "video_id": vid,
@@ -181,8 +219,8 @@ def api_jobs():
                     "disc_selection": disc_selection if has_selection else None,
                     "message": job.get("message", "")[:50]
                 })
-        except:
-            pass
+        except Exception as e:
+            print(f"[Control Panel] Error loading jobs: {e}")
     return jsonify(jobs)
 
 
@@ -202,6 +240,14 @@ def api_job_detail(job_id):
         
         job = jobs_data[job_id]
         
+        # Get original filename
+        original_filename = job.get("original_filename")
+        if not original_filename:
+            original_filename = f"video_{job_id[:8]}.mp4"
+        
+        # Get disc selection (can be "selection_data" or "disc_selection")
+        disc_selection = job.get("selection_data") or job.get("disc_selection")
+        
         # Try to get results summary if completed
         summary = None
         results_file = RESULTS_DIR / job_id / "results.json"
@@ -217,8 +263,8 @@ def api_job_detail(job_id):
             "video_id": job_id,
             "status": job.get("status"),
             "created_at": job.get("created_at"),
-            "original_filename": job.get("original_filename", "unknown.mp4"),
-            "disc_selection": job.get("disc_selection"),
+            "original_filename": original_filename,
+            "disc_selection": disc_selection,
             "message": job.get("message"),
             "summary": summary
         })
