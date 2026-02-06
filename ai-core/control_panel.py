@@ -167,15 +167,63 @@ def api_jobs():
             for vid, job in sorted(jobs_data.items(), 
                                    key=lambda x: x[1].get('created_at', ''), 
                                    reverse=True)[:10]:
+                # Extract more info from job
+                original_filename = job.get("original_filename", "unknown.mp4")
+                disc_selection = job.get("disc_selection")
+                has_selection = disc_selection is not None and disc_selection.get("center") is not None
+                
                 jobs.append({
                     "video_id": vid,
                     "status": job.get("status"),
                     "created_at": job.get("created_at"),
+                    "original_filename": original_filename,
+                    "has_disc_selection": has_selection,
+                    "disc_selection": disc_selection if has_selection else None,
                     "message": job.get("message", "")[:50]
                 })
         except:
             pass
     return jsonify(jobs)
+
+
+@app.route('/api/jobs/<job_id>')
+def api_job_detail(job_id):
+    """Get detailed info about a specific job."""
+    jobs_file = RESULTS_DIR / "jobs.json"
+    if not jobs_file.exists():
+        return jsonify({"error": "No jobs file"})
+    
+    try:
+        with open(jobs_file) as f:
+            jobs_data = json.load(f)
+        
+        if job_id not in jobs_data:
+            return jsonify({"error": "Job not found"})
+        
+        job = jobs_data[job_id]
+        
+        # Try to get results summary if completed
+        summary = None
+        results_file = RESULTS_DIR / job_id / "results.json"
+        if job.get("status") == "completed" and results_file.exists():
+            try:
+                with open(results_file) as f:
+                    results = json.load(f)
+                summary = results.get("summary")
+            except:
+                pass
+        
+        return jsonify({
+            "video_id": job_id,
+            "status": job.get("status"),
+            "created_at": job.get("created_at"),
+            "original_filename": job.get("original_filename", "unknown.mp4"),
+            "disc_selection": job.get("disc_selection"),
+            "message": job.get("message"),
+            "summary": summary
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # ============================================================
 # Routes - Service Control
@@ -453,16 +501,20 @@ def job_results():
 @app.route('/api/open-viewer', methods=['POST'])
 def open_viewer():
     """Open the interactive analysis viewer."""
-    if not state.current_job_id:
+    # Get job_id from request or use current
+    data = request.get_json() or {}
+    job_id = data.get("job_id") or state.current_job_id
+    
+    if not job_id:
         return jsonify({"success": False, "message": "No job to view"})
     
     try:
-        results_file = RESULTS_DIR / state.current_job_id / "results.json"
+        results_file = RESULTS_DIR / job_id / "results.json"
         
         if not results_file.exists():
             return jsonify({"success": False, "message": "Results not found"})
         
-        log(f"Opening viewer for {state.current_job_id}...")
+        log(f"Opening viewer for {job_id}...")
         
         env = os.environ.copy()
         env["PYTHONPATH"] = "src:."
