@@ -945,6 +945,51 @@ Content-Type: multipart/form-data
 
 ---
 
+## 17. Remote Testing Tool
+
+A standalone Python script for testing the pipeline from any computer.
+
+### Download & Run (No repo clone needed)
+
+```bash
+# Download the script
+curl -O https://raw.githubusercontent.com/nechebarrena/app-mvp/main/tools/remote_test.py
+
+# Install dependency
+pip install requests
+
+# Run test
+python remote_test.py \
+  --url https://YOUR-NGROK-URL.ngrok-free.app \
+  --video your_video.mp4 \
+  --disc-x 470 --disc-y 1436 --disc-radius 123
+```
+
+### What it does
+
+1. ✅ Verifies server is reachable
+2. 📤 Uploads video with disc selection parameters
+3. ⏳ Polls for processing status (shows progress)
+4. 📥 Downloads results JSON
+5. 📊 Displays summary (tracks, metrics, stats)
+
+### Output
+
+```
+🎯 Objetos trackeados: 2
+   • Track 1: frisbee (114 frames)
+   • Track 2: person (116 frames)
+
+📈 Métricas:
+   • Velocidad pico: 2.45 m/s
+   • Potencia pico:  1850 W
+   • Altura máxima:  0.82 m
+```
+
+See `tools/README.md` for complete documentation
+
+---
+
 ## Appendix: Entity Schemas
 
 ### Detection

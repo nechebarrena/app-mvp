@@ -879,6 +879,26 @@ curl -X GET "http://{server-ip}:8000/health" \
 {"status": "healthy", "timestamp": "..."}
 ```
 
+### 12.4 Remote Testing Tool
+
+For testing from any computer without the full repo:
+
+```bash
+# Download standalone script
+curl -O https://raw.githubusercontent.com/nechebarrena/app-mvp/main/tools/remote_test.py
+
+# Install dependency
+pip install requests
+
+# Run full test
+python remote_test.py \
+  --url https://YOUR-NGROK-URL.ngrok-free.app \
+  --video your_video.mp4 \
+  --disc-x 470 --disc-y 1436 --disc-radius 123
+```
+
+This script simulates the complete mobile app workflow and can be used to validate the server before mobile development.
+
 ### 12.4 Release Build
 
 ```bash

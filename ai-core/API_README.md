@@ -309,6 +309,30 @@ PYTHONPATH=src:. uv run python test_api_full.py --video ../data/raw/video_test_1
 
 ---
 
+## Test Remoto (desde otro PC)
+
+Para probar desde **cualquier computadora** sin necesidad de clonar el repositorio:
+
+```bash
+# Descargar script standalone
+curl -O https://raw.githubusercontent.com/nechebarrena/app-mvp/main/tools/remote_test.py
+
+# Instalar única dependencia
+pip install requests
+
+# Ejecutar test
+python remote_test.py \
+  --url https://TU-NGROK-URL.ngrok-free.app \
+  --video video.mp4 \
+  --disc-x 470 --disc-y 1436 --disc-radius 123
+```
+
+El script muestra progreso en tiempo real y genera un archivo JSON con los resultados.
+
+Ver `tools/README.md` para documentación completa.
+
+---
+
 ## Visualización de Resultados API
 
 El visualizador interactivo soporta tanto salida del pipeline como JSON de la API:
