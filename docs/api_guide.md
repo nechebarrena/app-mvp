@@ -280,15 +280,32 @@ requests.delete(f"{BASE_URL}/api/v1/videos/{video_id}")
 
 ### Rendering on Mobile
 The `tracks` array contains all information needed to render overlays:
-- `bbox`: Bounding box coordinates per frame
-- `mask`: Polygon points for segmentation (if available)
-- `trajectory`: Center points for drawing motion path
+- `bbox`: Bounding box coordinates per frame (x1, y1, x2, y2 in pixels)
+- `mask`: Polygon points for segmentation (if available, `[[x,y], ...]`)
+- `trajectory`: **Complete** center points for drawing motion path (`[[x, y], ...]`)
+- `confidence`: Detection confidence per frame (0.0-1.0)
+
+**Trajectory construction:** Trajectories are built from the bbox centers of **every frame** where the object was detected, sorted chronologically. This ensures the full motion path is available (not just a truncated tail from the tracker's internal buffer).
+
+**Available overlay data per track:**
+| Data | Available | Source |
+|------|-----------|--------|
+| Bounding box (person) | ✅ Yes | `frames[frame_idx].bbox` |
+| Bounding box (disc) | ✅ Yes | `frames[frame_idx].bbox` |
+| Segmentation mask (disc) | ✅ Yes* | `frames[frame_idx].mask` |
+| Full trajectory path | ✅ Yes | `trajectory` |
+| Pose keypoints (skeleton) | ❌ No | Not in API pipeline |
+
+*\*Masks are available when the YOLO model runs in segmentation mode (default).*
+
+> **Note:** The API pipeline currently does NOT run pose estimation (YOLO Pose). To add athlete skeleton overlay, the `yolo_pose` step would need to be added to the API pipeline and a `keypoints` field to the response model.
 
 The mobile app should:
 1. Load the original video (already on device)
 2. For each frame, lookup detections in `tracks[].frames[frame_idx]`
 3. Draw bounding boxes, masks, and trajectories
 4. Optionally show metrics from `metrics` series
+5. Use `metadata.fps` to synchronize frame indices with video playback time
 
 ## Health Check
 ```http

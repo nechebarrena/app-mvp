@@ -147,8 +147,11 @@ curl -s "http://localhost:8000/api/v1/videos/$VIDEO_ID/results" | python3 -m jso
     {
       "track_id": 2,
       "class_name": "frisbee",
-      "frames": {...},
-      "trajectory": [...]
+      "frames": {
+        "0": {"bbox": {"x1": 550, "y1": 600, "x2": 620, "y2": 670}, "mask": [[550,600], [560,605], ...], "confidence": 0.92},
+        "1": {...}
+      },
+      "trajectory": [[585, 635], [587, 633], ...]
     }
   ],
   "metrics": {
@@ -166,6 +169,22 @@ curl -s "http://localhost:8000/api/v1/videos/$VIDEO_ID/results" | python3 -m jso
   }
 }
 ```
+
+### Datos disponibles para overlay en video
+
+Cada track incluye datos suficientes para renderizar overlays frame-a-frame en el dispositivo móvil:
+
+| Dato | Disponible | Campo |
+|------|-----------|-------|
+| Bounding box (persona/disco) | ✅ | `tracks[].frames[N].bbox` |
+| Máscara de segmentación | ✅* | `tracks[].frames[N].mask` |
+| Trayectoria completa | ✅ | `tracks[].trajectory` |
+| Confianza por frame | ✅ | `tracks[].frames[N].confidence` |
+| Pose del atleta (keypoints) | ❌ | No incluido en pipeline API |
+
+*\*Las máscaras están disponibles cuando el modelo YOLO corre en modo segmentación (default).*
+
+> **Nota sobre trayectorias:** Las trayectorias se construyen a partir del centro del bbox de **cada frame** donde se detectó el objeto (ordenados cronológicamente), garantizando el recorrido completo del movimiento.
 
 ---
 

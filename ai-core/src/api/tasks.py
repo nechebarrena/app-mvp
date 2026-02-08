@@ -282,11 +282,18 @@ def build_api_results(
                             mask_data = mask_data.tolist()
                         track_dict[tid]["frames"][str(frame_idx)]["mask"] = mask_data
                     
-                    # Build trajectory from history
-                    if hasattr(obj, 'history') and obj.history:
-                        track_dict[tid]["trajectory"] = [
-                            [float(p[0]), float(p[1])] for p in obj.history
-                        ]
+                    # NOTE: obj.history only contains the last N points (truncated tail)
+                    # so we build the full trajectory below from bbox centers instead.
+        
+        # Build complete trajectory from bbox centers for each track
+        for tid, track_data in track_dict.items():
+            sorted_frame_indices = sorted(track_data["frames"].keys(), key=lambda k: int(k))
+            track_data["trajectory"] = []
+            for fidx in sorted_frame_indices:
+                bbox = track_data["frames"][fidx]["bbox"]
+                cx = (bbox["x1"] + bbox["x2"]) / 2.0
+                cy = (bbox["y1"] + bbox["y2"]) / 2.0
+                track_data["trajectory"].append([cx, cy])
         
         tracks = list(track_dict.values())
     
