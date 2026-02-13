@@ -615,7 +615,7 @@ async def process_video_task(video_id: str):
         
         if selection_data:
             print(f"[Task] Using disc selection: center={selection_data['center']}, radius={selection_data['radius']}")
-        print(f"[Task] Tracking backend: {tracking_backend}")
+        print(f"[Task] *** Tracking backend: {tracking_backend.upper()} ***")
         
         # Create pipeline config
         config_dict = create_api_pipeline_config(

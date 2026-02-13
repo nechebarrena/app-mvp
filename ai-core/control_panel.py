@@ -520,7 +520,8 @@ def process_video():
         # Determine URL to use
         base_url = f"http://localhost:{FASTAPI_PORT}"
         
-        log(f"Uploading video to {base_url}...")
+        backend_info = TRACKING_BACKENDS.get(state.tracking_backend, {})
+        log(f"Uploading video to {base_url} (backend: {backend_info.get('name', state.tracking_backend)})")
         
         # Prepare form data
         files = {"file": open(state.current_video, "rb")}
@@ -536,6 +537,7 @@ def process_video():
         
         # Send tracking backend selection
         data["tracking_backend"] = state.tracking_backend
+        log(f"Disc tracking: {backend_info.get('disc_model', '?')} | Person: {backend_info.get('person_model', '?')} | Pose: {backend_info.get('pose_model', '?')}")
         
         # Upload
         response = requests.post(
