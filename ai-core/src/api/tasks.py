@@ -33,8 +33,24 @@ STEP_PROGRESS = {
     "complete": 1.0
 }
 
-# Default tracking backend (server-side config)
+# Default tracking backend (server-side config, can be changed via API)
 DEFAULT_TRACKING_BACKEND = "cutie"
+
+# Server-side runtime config (mutable, set by control panel)
+_server_config = {
+    "tracking_backend": DEFAULT_TRACKING_BACKEND,
+}
+
+
+def get_server_tracking_backend() -> str:
+    """Get the current server-side tracking backend."""
+    return _server_config.get("tracking_backend", DEFAULT_TRACKING_BACKEND)
+
+
+def set_server_tracking_backend(backend: str):
+    """Set the server-side tracking backend."""
+    _server_config["tracking_backend"] = backend
+    print(f"[Config] Server tracking backend set to: {backend.upper()}")
 
 
 class PipelineProgressCallback:
@@ -611,11 +627,15 @@ async def process_video_task(video_id: str):
         
         # Get selection data and tracking backend from job
         selection_data = job.selection_data
-        tracking_backend = job.tracking_backend or DEFAULT_TRACKING_BACKEND
+        # Priority: job-specific > server config > hardcoded default
+        tracking_backend = job.tracking_backend or get_server_tracking_backend()
         
         if selection_data:
             print(f"[Task] Using disc selection: center={selection_data['center']}, radius={selection_data['radius']}")
         print(f"[Task] *** Tracking backend: {tracking_backend.upper()} ***")
+        
+        # Store the actual backend used in the job (so UI shows correct info)
+        storage.update_job(video_id, tracking_backend=tracking_backend)
         
         # Create pipeline config
         config_dict = create_api_pipeline_config(

@@ -249,7 +249,8 @@ class StorageManager:
         current_step: Optional[str] = None,
         message: Optional[str] = None,
         error: Optional[str] = None,
-        results_path: Optional[str] = None
+        results_path: Optional[str] = None,
+        tracking_backend: Optional[str] = None
     ) -> Optional[VideoJob]:
         """
         Update a job's state.
@@ -273,6 +274,8 @@ class StorageManager:
                 job.error = error
             if results_path is not None:
                 job.results_path = results_path
+            if tracking_backend is not None:
+                job.tracking_backend = tracking_backend
             
             job.updated_at = datetime.now()
             self._save_jobs()

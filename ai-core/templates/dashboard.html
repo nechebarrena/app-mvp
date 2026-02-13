@@ -760,9 +760,14 @@ Content-Type: multipart/form-data</pre>
                 
                 <div class="results-summary" id="results-summary"></div>
                 
-                <button class="btn-primary btn-large" onclick="openViewer()">
-                    📊 Open Interactive Viewer
-                </button>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button class="btn-primary btn-large" onclick="openViewer()" style="flex: 2;">
+                        📊 Open Interactive Viewer
+                    </button>
+                    <button class="btn-secondary btn-large" onclick="resetAnalysis()" style="flex: 1;">
+                        🔄 New Analysis
+                    </button>
+                </div>
             </div>
         </div>
         
@@ -890,8 +895,8 @@ Content-Type: multipart/form-data</pre>
                     container.innerHTML = '<div style="color: var(--text-secondary); padding: 10px; text-align: center;">No jobs yet</div>';
                 } else {
                     container.innerHTML = jobs.map(job => {
-                        const backendLabel = (job.tracking_backend || 'yolo').toUpperCase();
-                        const backendClass = (job.tracking_backend || 'yolo') === 'cutie' ? 'cutie' : 'yolo';
+                        const backendLabel = (job.tracking_backend || 'cutie').toUpperCase();
+                        const backendClass = (job.tracking_backend || 'cutie') === 'cutie' ? 'cutie' : 'yolo';
                         return `
                         <div class="job-item" onclick="showJobDetail('${job.video_id}')">
                             <div class="job-info">
@@ -968,7 +973,7 @@ Content-Type: multipart/form-data</pre>
                         </div>
                         <div class="modal-row">
                             <span class="modal-label">Tracking Backend</span>
-                            <span class="modal-value">${(job.tracking_backend || 'yolo').toUpperCase()}</span>
+                            <span class="modal-value">${(job.tracking_backend || 'cutie').toUpperCase()}</span>
                         </div>
                         <div class="modal-row">
                             <span class="modal-label">Disc Selection</span>
@@ -1412,6 +1417,38 @@ Content-Type: multipart/form-data</pre>
             document.getElementById('processing-ready').classList.add('hidden');
             document.getElementById('processing-progress').classList.add('hidden');
             document.getElementById('processing-complete').classList.remove('hidden');
+        }
+        
+        function resetAnalysis() {
+            // Reset processing state
+            showProcessingReady();
+            
+            // Reset video selection
+            selectedVideoPath = null;
+            currentJobId = null;
+            document.getElementById('selected-video-name').textContent = 'None';
+            document.getElementById('current-video-indicator').innerHTML = '<span class="empty">No video selected</span>';
+            document.getElementById('current-video-indicator').classList.add('empty');
+            
+            // Reset disc selection
+            document.getElementById('selection-info').innerHTML = '<span class="empty">No disc selected yet</span>';
+            
+            // Deselect video in list
+            document.querySelectorAll('.video-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Clear polling
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            
+            // Refresh jobs list
+            updateJobs();
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         
         // ============================================================

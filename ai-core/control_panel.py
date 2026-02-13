@@ -245,7 +245,7 @@ def api_jobs():
                     "original_filename": original_filename,
                     "has_disc_selection": has_selection,
                     "disc_selection": disc_selection if has_selection else None,
-                    "tracking_backend": job.get("tracking_backend", "yolo"),
+                    "tracking_backend": job.get("tracking_backend", "cutie"),
                     "message": job.get("message", "")[:50]
                 })
         except Exception as e:
@@ -294,7 +294,7 @@ def api_job_detail(job_id):
             "created_at": job.get("created_at"),
             "original_filename": original_filename,
             "disc_selection": disc_selection,
-            "tracking_backend": job.get("tracking_backend", "yolo"),
+            "tracking_backend": job.get("tracking_backend", "cutie"),
             "message": job.get("message"),
             "summary": summary
         })
@@ -329,6 +329,18 @@ def start_fastapi():
             time.sleep(0.5)
             if check_fastapi_health():
                 log("FastAPI server started successfully", "success")
+                # Sync tracking backend with FastAPI
+                try:
+                    import requests as req
+                    req.post(
+                        f"http://localhost:{FASTAPI_PORT}/api/v1/config/tracking-backend",
+                        json={"backend": state.tracking_backend},
+                        timeout=3
+                    )
+                    backend_name = TRACKING_BACKENDS.get(state.tracking_backend, {}).get("name", state.tracking_backend)
+                    log(f"FastAPI synced to tracking backend: {backend_name}")
+                except:
+                    pass
                 return jsonify({"success": True, "message": "FastAPI started"})
         
         log("FastAPI failed to start in time", "error")
@@ -438,7 +450,7 @@ def stop_all_services():
 
 @app.route('/api/tracking-backend', methods=['POST'])
 def set_tracking_backend():
-    """Set the tracking backend (server-side config, not API)."""
+    """Set the tracking backend (syncs with FastAPI server if running)."""
     data = request.get_json()
     backend = data.get("backend")
     
@@ -448,6 +460,23 @@ def set_tracking_backend():
     state.tracking_backend = backend
     info = TRACKING_BACKENDS[backend]
     log(f"Tracking backend changed to: {info['name']}", "success")
+    
+    # Sync with running FastAPI server so ngrok/remote requests also use this backend
+    if check_fastapi_health():
+        try:
+            import requests as req
+            resp = req.post(
+                f"http://localhost:{FASTAPI_PORT}/api/v1/config/tracking-backend",
+                json={"backend": backend},
+                timeout=3
+            )
+            if resp.status_code == 200:
+                log(f"FastAPI server synced to: {info['name']}")
+            else:
+                log(f"FastAPI sync failed: {resp.text}", "warning")
+        except Exception as e:
+            log(f"Could not sync with FastAPI: {e}", "warning")
+    
     return jsonify({"success": True, "backend": backend, "info": info})
 
 # ============================================================

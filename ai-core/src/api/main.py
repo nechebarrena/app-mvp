@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from .routes import videos_router
 from .storage import init_storage, get_storage
-from .tasks import start_worker
+from .tasks import start_worker, get_server_tracking_backend, set_server_tracking_backend
 
 
 # API metadata
@@ -120,6 +120,23 @@ async def root():
         "docs": "/docs",
         "api": "/api/v1"
     }
+
+
+# Server config endpoints
+@app.get("/api/v1/config/tracking-backend", tags=["config"])
+async def get_tracking_backend():
+    """Get the current server-side tracking backend."""
+    return {"tracking_backend": get_server_tracking_backend()}
+
+
+@app.post("/api/v1/config/tracking-backend", tags=["config"])
+async def set_tracking_backend(data: dict):
+    """Set the server-side tracking backend (used for all requests that don't specify one)."""
+    backend = data.get("backend")
+    if backend not in ("cutie", "yolo"):
+        return {"success": False, "message": f"Unknown backend: {backend}"}
+    set_server_tracking_backend(backend)
+    return {"success": True, "tracking_backend": backend}
 
 
 # Health check endpoint
