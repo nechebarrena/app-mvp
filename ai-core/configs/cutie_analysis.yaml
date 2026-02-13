@@ -1,0 +1,237 @@
+# =============================================================================
+# CUTIE-BASED LIFTING ANALYSIS PIPELINE
+# =============================================================================
+#
+# This pipeline uses the Cutie VOS model for disc tracking instead of YOLO.
+# Cutie provides superior tracking for weightlifting discs because it:
+#   - Does NOT depend on COCO class labels (no "frisbee" confusion)
+#   - Tracks by visual appearance from an initial mask (disc selection)
+#   - Handles occlusions (disc behind athlete's body)
+#   - Provides 100% frame coverage vs YOLO's sparse detections
+#
+# YOLO is still used for person detection and pose estimation.
+#
+# Pipeline flow:
+#   1. Video ingestion
+#   2. Cutie disc tracking (from disc selection → per-frame masks)
+#   3. YOLO person detection + pose estimation (in parallel with Cutie output)
+#   4. Detection merger (combines Cutie disc + YOLO person detections)
+#   5. Track refinement (smoothing)
+#   6. Metrics calculation
+#   7. Visualization
+#
+# Run:
+#   cd ai-core
+#   PYTHONPATH=vendors/cutie:src:. uv run python run_pipeline.py configs/cutie_analysis.yaml
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# VARIABLES
+# -----------------------------------------------------------------------------
+variables:
+  video_name: "video_test_5"
+  output_name: "cutie_analysis_run"
+
+# -----------------------------------------------------------------------------
+# DISC SELECTION - Cutie REQUIRES an initial mask
+# -----------------------------------------------------------------------------
+disc_selection:
+  mode: "interactive"
+  output_file: "../data/outputs/disc_selection.json"
+
+# -----------------------------------------------------------------------------
+# SESSION
+# -----------------------------------------------------------------------------
+session:
+  video_id: "${video_name}"
+  output_dir: "${output_name}"
+
+# =============================================================================
+# PIPELINE STEPS
+# =============================================================================
+steps:
+  # ============================================================
+  # STAGE 1: Video Loading
+  # ============================================================
+  - name: ingestion
+    module: "video_loader"
+    enabled: true
+    input_source: "disk"
+    save_output: false
+    params: {}
+
+  # ============================================================
+  # STAGE 2: Cutie Disc Tracking
+  # Replaces: yolo_detection + detection_filter + model_tracker for disc
+  # Input: VideoSession (same as YOLO detector)
+  # Output: Dict[int, List[Detection]] (same format as YOLO detector)
+  # ============================================================
+  - name: cutie_disc_tracking
+    module: "cutie_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      weights_path: "models/pretrained/cutie/cutie-base-mega.pth"
+      max_internal_size: 480
+      mem_every: 5
+      target_class_name: "frisbee"
+      min_mask_area: 100
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 3: YOLO Person Detection (segmentation)
+  # Runs on the same video, provides person bounding boxes + masks
+  # ============================================================
+  - name: yolo_person_detection
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: false
+    params:
+      model_path: "models/pretrained/yolov8s-seg.pt"
+      task: "segment"
+      conf_threshold: 0.25
+      source_name: "yolo_coco"
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 4: Pose Estimation
+  # ============================================================
+  - name: yolo_pose
+    module: "yolo_detector"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "ingestion"
+    save_output: true
+    params:
+      model_path: "models/pretrained/yolov8n-pose.pt"
+      task: "pose"
+      conf_threshold: 0.3
+      source_name: "yolo_pose"
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 5: Merge Cutie disc + YOLO person detections
+  # ============================================================
+  - name: merged_detections
+    module: "detection_merger"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["cutie_disc_tracking", "yolo_person_detection"]
+    save_output: true
+    params: {}
+
+  # ============================================================
+  # STAGE 6: Tracking
+  # Now receives merged detections (Cutie disc + YOLO persons)
+  # The disc track from Cutie is already continuous, so the tracker
+  # mainly handles person tracking and track ID assignment
+  # ============================================================
+  - name: disc_tracking
+    module: "model_tracker"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "merged_detections"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_track: ["frisbee", "person"]
+      initial_selection:
+        class_name: "frisbee"
+      min_det_score: 0.05
+      high_det_score: 0.15
+      max_age_frames: 30
+      min_hits_to_confirm: 1
+      association:
+        max_center_dist_px: 200
+      single_object_classes: ["frisbee"]
+      output:
+        save_tracked_detections: true
+        save_tracks_summary: true
+      progress_every: 30
+
+  # ============================================================
+  # STAGE 7: Post-Tracking Refinement
+  # ============================================================
+  - name: track_refiner
+    module: "track_refiner"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "disc_tracking"
+    save_output: true
+    params:
+      enabled: true
+      classes_to_refine: ["frisbee", "person"]
+      smoothing:
+        enabled: true
+        method: "moving_average"
+        window: 5
+
+  # ============================================================
+  # STAGE 8: Metrics Calculation
+  # ============================================================
+  - name: metrics_calculator
+    module: "metrics_calculator"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "track_refiner"
+    save_output: true
+    params:
+      physical_params_file: "configs/physical_params.yaml"
+      target_class: "frisbee"
+      smooth_window: 5
+
+  # ============================================================
+  # STAGE 9: Metrics Visualization
+  # ============================================================
+  - name: metrics_visualizer
+    module: "metrics_visualizer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: "metrics_calculator"
+    save_output: true
+    params:
+      output_filename: "../data/outputs/${output_name}/metrics_plot.png"
+      figsize: [14, 16]
+      dpi: 150
+      plots:
+        position: true
+        velocity: true
+        acceleration: true
+        energy: true
+        power: true
+
+  # ============================================================
+  # STAGE 10: Video Visualization
+  # ============================================================
+  - name: tracking_video
+    module: "multi_model_renderer"
+    enabled: true
+    input_source: "memory"
+    input_from_step: ["track_refiner", "yolo_pose"]
+    save_output: true
+    params:
+      video_source: "../data/raw/${video_name}.mp4"
+      output_filename: "../data/outputs/${output_name}/tracking_video.mp4"
+      panel_width: 640
+      font_scale: 0.5
+      show_confidence: true
+      show_track_id: true
+      show_trajectory: true
+      progress_every: 20
+      mask_alpha: 0.45
+      mask_contour: true
+      mask_contour_thickness: 2
+      label_mapping:
+        atleta:
+          yolo_coco: "person"
+          yolo_pose: "person"
+        disco:
+          cutie: "frisbee"
+          yolo_coco: "frisbee"
+      visualize_labels: ["atleta", "disco"]
+      use_global_labels: true

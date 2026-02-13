@@ -28,6 +28,14 @@ ai-core/models/pretrained/*
 !ai-core/models/pretrained/.gitkeep
 
 # -------------------------------------------
+# Vendor dependencies (git submodules / clones)
+# -------------------------------------------
+# Cutie VOS model (cloned from GitHub)
+# We track the vendor code but NOT its .git directory or model weights
+ai-core/vendors/cutie/.git/
+ai-core/vendors/cutie/weights/
+
+# -------------------------------------------
 # Python
 # -------------------------------------------
 __pycache__/

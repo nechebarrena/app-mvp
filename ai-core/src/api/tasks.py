@@ -444,6 +444,7 @@ async def process_video_task(video_id: str):
         # Import and register modules
         from input_layer.video_loader import VideoLoader
         from perception.yolo_detector import YoloDetector
+        from perception.cutie_tracker import CutieTracker
         from analysis.detection_filter import DetectionFilter
         from analysis.model_tracker import ModelTracker
         from analysis.track_refiner import TrackRefiner
@@ -452,9 +453,10 @@ async def process_video_task(video_id: str):
         # Create pipeline runner
         runner = PipelineRunner(config_yaml_path)
         
-        # Register modules
+        # Register all available modules (pipeline config determines which are used)
         runner.register_step("video_loader", VideoLoader)
         runner.register_step("yolo_detector", YoloDetector)
+        runner.register_step("cutie_tracker", CutieTracker)
         runner.register_step("detection_filter", DetectionFilter)
         runner.register_step("model_tracker", ModelTracker)
         runner.register_step("track_refiner", TrackRefiner)

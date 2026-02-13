@@ -24,14 +24,18 @@ The architecture strictly separates:
 │   ├── /models                 <-- Model weights
 │   │   ├── /custom             <-- Custom trained (best.pt)
 │   │   └── /pretrained         <-- Standard YOLO models
+│   ├── /vendors               <-- Vendored dependencies
+│   │   └── /cutie             <-- Cutie VOS model (CVPR 2024)
 │   └── /src                    <-- Production-ready Code
 │       ├── /domain             <-- CONTRACTS (Entities & Interfaces)
 │       ├── /input_layer        <-- Data Ingestion & ETL
-│       ├── /perception         <-- Vision Models (YOLO)
+│       ├── /perception         <-- Vision Models (YOLO, Cutie)
 │       ├── /analysis           <-- Business Logic (Filter, Track, Refine)
 │       ├── /visualization      <-- Debug Tools & Renderers
 │       ├── /tools              <-- Utility Tools (disc_selector)
 │       └── /pipeline           <-- Orchestration
+│
+├── /tools                      <-- Standalone validation & testing tools
 │
 └── /mobile-app                 <-- MOBILE CLIENT (Future)
 ```
@@ -53,29 +57,41 @@ Interfaces (Python Protocols) that define what a module *must do*, decoupling th
 ### Label Mapper (`label_mapper.py`)
 Utility class for mapping model-specific labels (e.g., "person", "frisbee") to global labels (e.g., "atleta", "disco").
 
-## 3. Three-Phase Heuristics Architecture
+## 3. Detection & Tracking Architecture
 
-The pipeline separates heuristics into three phases:
+The pipeline supports two tracking backends for disc tracking:
+
+### Backend A: YOLO + Three-Phase Heuristics (Original)
 
 ```
-Detection → [Pre-Tracking] → [Tracking] → [Post-Tracking] → Output
-             DetectionFilter   ModelTracker   TrackRefiner
+YOLO Detection → [Pre-Tracking] → [Tracking] → [Post-Tracking] → Output
+                  DetectionFilter   ModelTracker   TrackRefiner
 ```
 
-### Phase 1: Pre-Tracking (DetectionFilter)
-- **State**: None (stateless, per-frame)
-- **Purpose**: Reduce candidate detections
-- **Filters**: Size, confidence, ROI, largest-selector
+- **Phase 1 (DetectionFilter)**: Stateless per-frame filtering (size, confidence, ROI)
+- **Phase 2 (ModelTracker)**: Temporal tracking (Kalman + Hungarian assignment)
+- **Phase 3 (TrackRefiner)**: Trajectory smoothing
 
-### Phase 2: Tracking (ModelTracker)
-- **State**: Temporal (Kalman filter)
-- **Purpose**: Assign persistent IDs to objects
-- **Features**: Hungarian assignment, track lifecycle, single-object mode
+**Limitation**: YOLO uses COCO class labels ("frisbee", "sports ball") which are poor proxies for weightlifting discs. This causes sparse detections (often <10% frame coverage) and track fragmentation.
 
-### Phase 3: Post-Tracking (TrackRefiner)
-- **State**: Full trajectory
-- **Purpose**: Refine trajectories
-- **Features**: Smoothing (moving average, exponential), outlier removal
+### Backend B: Cutie VOS (Recommended)
+
+```
+Disc Selection → [Cutie VOS Tracker] → [Post-Tracking] → Output
+(initial mask)    (visual tracking)     TrackRefiner
+```
+
+- **Cutie** (CVPR 2024): Semi-supervised Video Object Segmentation model
+- **Approach**: Given an initial mask from disc selection, tracks by visual appearance
+- **Advantages**: 100% frame coverage, handles occlusions, no COCO class dependency
+- **Output**: Same `Dict[int, List[Detection]]` format as YOLO — fully plug-and-play
+
+Both backends use YOLO for person detection and pose estimation.
+
+### Shared Post-Tracking
+
+- **TrackRefiner**: Smoothing (moving average, exponential), outlier removal
+- **MetricsCalculator**: Physics-based metrics (velocity, acceleration, energy, power)
 
 ## 4. Data Flow (The Hybrid Pipeline)
 The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runner.py`) driven by YAML files.
@@ -86,14 +102,19 @@ The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runn
 
 ### Non-Linear Execution
 Steps can declare inputs explicitly, allowing parallel branches:
-*   `YOLO Custom` consumes `Ingestion` output.
-*   `YOLO COCO` consumes `Ingestion` output.
-*   `Multi-Model Renderer` consumes multiple model outputs.
 
+**YOLO-only pipeline** (`configs/full_analysis.yaml`):
 ```
-Ingestion ─┬─> YOLO Custom ─> Filter ─> Track ─> Refine ─┬─> Visualization
-           ├─> YOLO COCO ──> Filter ─> Track ─> Refine ──┤
-           └─> YOLO Pose ─────────────────────────────────┘
+Ingestion ─┬─> YOLO COCO ──> Filter ─> Track ─> Refine ─┬─> Visualization
+           └─> YOLO Pose ───────────────────────────────┘
+```
+
+**Cutie + YOLO hybrid pipeline** (`configs/cutie_analysis.yaml`):
+```
+Ingestion ─┬─> Cutie (disc) ────────┐
+           ├─> YOLO COCO (person) ──┼─> Merger ─> Track ─> Refine ─┬─> Visualization
+           └─> YOLO Pose ───────────┤                               │
+                                    └───────────────────────────────┘
 ```
 
 See [docs/pipeline_guide.md](pipeline_guide.md) for details on configuring runs.

@@ -19,6 +19,7 @@ from src.analysis.detection_filter import DetectionFilter
 from src.analysis.track_refiner import TrackRefiner
 from src.analysis.metrics_calculator import MetricsCalculator
 from src.visualization.metrics_visualizer import MetricsVisualizer
+from src.perception.cutie_tracker import CutieTracker
 from src.tools.selection_loader import SelectionLoader
 
 def main():
@@ -49,6 +50,7 @@ def main():
     runner.register_step("track_refiner", TrackRefiner)
     runner.register_step("metrics_calculator", MetricsCalculator)
     runner.register_step("metrics_visualizer", MetricsVisualizer)
+    runner.register_step("cutie_tracker", CutieTracker)
     runner.register_step("selection_loader", SelectionLoader)
     # ----------------
     
