@@ -41,6 +41,7 @@ class VideoJob:
     results_path: Optional[str] = None
     selection_data: Optional[Dict[str, Any]] = None  # Disc selection: {center: [x,y], radius: r}
     original_filename: Optional[str] = None  # Original uploaded filename
+    tracking_backend: Optional[str] = None  # "cutie" or "yolo" (server-side config)
     
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -54,11 +55,13 @@ class VideoJob:
         data['status'] = ProcessingStatus(data['status'])
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        # Handle old jobs without selection_data or original_filename
+        # Handle old jobs without selection_data, original_filename, or tracking_backend
         if 'selection_data' not in data:
             data['selection_data'] = None
         if 'original_filename' not in data:
             data['original_filename'] = None
+        if 'tracking_backend' not in data:
+            data['tracking_backend'] = None
         return cls(**data)
 
 
@@ -165,7 +168,8 @@ class StorageManager:
         video_id: str, 
         video_path: Path,
         selection_data: Optional[Dict[str, Any]] = None,
-        original_filename: Optional[str] = None
+        original_filename: Optional[str] = None,
+        tracking_backend: Optional[str] = None
     ) -> VideoJob:
         """
         Create a new processing job.
@@ -188,7 +192,8 @@ class StorageManager:
             updated_at=now,
             message="Video uploaded, waiting for processing",
             selection_data=selection_data,
-            original_filename=original_filename
+            original_filename=original_filename,
+            tracking_backend=tracking_backend
         )
         
         with self._lock:

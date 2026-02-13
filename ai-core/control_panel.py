@@ -42,6 +42,26 @@ app = Flask(__name__,
             template_folder=str(AI_CORE_DIR / "templates"),
             static_folder=str(AI_CORE_DIR / "static"))
 
+# Available tracking backends
+TRACKING_BACKENDS = {
+    "cutie": {
+        "name": "Cutie VOS",
+        "description": "Visual object segmentation — tracks by appearance from initial mask",
+        "requires_selection": True,
+        "disc_model": "Cutie (cutie-base-mega)",
+        "person_model": "YOLOv8s-seg (COCO)",
+        "pose_model": "YOLOv8n-pose",
+    },
+    "yolo": {
+        "name": "YOLO Only",
+        "description": "COCO class-based detection — uses 'frisbee'/'sports ball' classes",
+        "requires_selection": False,
+        "disc_model": "YOLOv8s-seg (COCO 'frisbee')",
+        "person_model": "YOLOv8s-seg (COCO)",
+        "pose_model": "YOLOv8n-pose",
+    },
+}
+
 # Global state
 class AppState:
     fastapi_process: Optional[subprocess.Popen] = None
@@ -51,6 +71,7 @@ class AppState:
     current_video: Optional[str] = None
     current_selection: Optional[Dict[str, Any]] = None
     current_job_id: Optional[str] = None
+    tracking_backend: str = "cutie"  # Default to Cutie (recommended)
     
 state = AppState()
 
@@ -143,6 +164,8 @@ def api_status():
         except:
             pass
     
+    backend_info = TRACKING_BACKENDS.get(state.tracking_backend, TRACKING_BACKENDS["cutie"])
+    
     return jsonify({
         "fastapi": {
             "running": fastapi_running,
@@ -155,7 +178,12 @@ def api_status():
         "current_video": state.current_video,
         "current_selection": state.current_selection,
         "current_job_id": state.current_job_id,
-        "job_stats": job_stats
+        "job_stats": job_stats,
+        "tracking": {
+            "backend": state.tracking_backend,
+            "backend_info": backend_info,
+            "available_backends": TRACKING_BACKENDS
+        }
     })
 
 @app.route('/api/logs')
@@ -217,6 +245,7 @@ def api_jobs():
                     "original_filename": original_filename,
                     "has_disc_selection": has_selection,
                     "disc_selection": disc_selection if has_selection else None,
+                    "tracking_backend": job.get("tracking_backend", "yolo"),
                     "message": job.get("message", "")[:50]
                 })
         except Exception as e:
@@ -265,6 +294,7 @@ def api_job_detail(job_id):
             "created_at": job.get("created_at"),
             "original_filename": original_filename,
             "disc_selection": disc_selection,
+            "tracking_backend": job.get("tracking_backend", "yolo"),
             "message": job.get("message"),
             "summary": summary
         })
@@ -284,7 +314,7 @@ def start_fastapi():
     try:
         log("Starting FastAPI server...")
         env = os.environ.copy()
-        env["PYTHONPATH"] = "src:."
+        env["PYTHONPATH"] = "vendors/cutie:src:."
         
         state.fastapi_process = subprocess.Popen(
             ["uv", "run", "python", "run_api.py"],
@@ -403,6 +433,24 @@ def stop_all_services():
     return jsonify({"success": True, "message": "All services stopped"})
 
 # ============================================================
+# Routes - Model Configuration
+# ============================================================
+
+@app.route('/api/tracking-backend', methods=['POST'])
+def set_tracking_backend():
+    """Set the tracking backend (server-side config, not API)."""
+    data = request.get_json()
+    backend = data.get("backend")
+    
+    if backend not in TRACKING_BACKENDS:
+        return jsonify({"success": False, "message": f"Unknown backend: {backend}"})
+    
+    state.tracking_backend = backend
+    info = TRACKING_BACKENDS[backend]
+    log(f"Tracking backend changed to: {info['name']}", "success")
+    return jsonify({"success": True, "backend": backend, "info": info})
+
+# ============================================================
 # Routes - Video Processing
 # ============================================================
 
@@ -485,6 +533,9 @@ def process_video():
                 data["disc_center_y"] = center[1]
             if state.current_selection.get("radius"):
                 data["disc_radius"] = state.current_selection["radius"]
+        
+        # Send tracking backend selection
+        data["tracking_backend"] = state.tracking_backend
         
         # Upload
         response = requests.post(

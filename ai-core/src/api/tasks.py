@@ -22,13 +22,19 @@ from .storage import get_storage, StorageManager
 STEP_PROGRESS = {
     "ingestion": 0.05,
     "yolo_coco_detection": 0.30,
-    "yolo_pose": 0.45,
+    "cutie_disc_tracking": 0.35,
+    "yolo_person_detection": 0.45,
+    "yolo_pose": 0.50,
+    "merged_detections": 0.55,
     "detection_filter": 0.55,
     "disc_tracking": 0.70,
     "track_refiner": 0.80,
     "metrics_calculator": 0.90,
     "complete": 1.0
 }
+
+# Default tracking backend (server-side config)
+DEFAULT_TRACKING_BACKEND = "cutie"
 
 
 class PipelineProgressCallback:
@@ -57,15 +63,40 @@ class PipelineProgressCallback:
 def create_api_pipeline_config(
     video_path: str,
     output_dir: str,
-    selection_data: Optional[Dict[str, Any]] = None
+    selection_data: Optional[Dict[str, Any]] = None,
+    tracking_backend: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Create a pipeline configuration for API processing.
     
-    This is a simplified version of full_analysis.yaml optimized for API use.
+    Args:
+        video_path: Path to the uploaded video
+        output_dir: Directory for pipeline outputs
+        selection_data: Optional disc selection {center: [x,y], radius: r}
+        tracking_backend: "cutie" or "yolo" (defaults to DEFAULT_TRACKING_BACKEND)
+    
+    Returns:
+        Pipeline configuration dictionary
     """
-    # Extract video_id from path (for API, we use the generated video_id)
-    video_id_from_path = Path(video_path).parent.name  # This is the video_id directory
+    backend = tracking_backend or DEFAULT_TRACKING_BACKEND
+    
+    if backend == "cutie":
+        return _create_cutie_pipeline_config(video_path, output_dir, selection_data)
+    else:
+        return _create_yolo_pipeline_config(video_path, output_dir, selection_data)
+
+
+def _create_cutie_pipeline_config(
+    video_path: str,
+    output_dir: str,
+    selection_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Create pipeline config using Cutie for disc tracking + YOLO for person/pose.
+    
+    Flow: ingestion → cutie_disc → yolo_person → yolo_pose → merger → tracker → refiner → metrics
+    """
+    video_id_from_path = Path(video_path).parent.name
     
     config = {
         "session": {
@@ -73,7 +104,172 @@ def create_api_pipeline_config(
             "output_dir": output_dir,
         },
         "steps": [
-            # Ingestion - use disk mode so pipeline finds the video in data/raw/
+            # Stage 1: Video Loading
+            {
+                "name": "ingestion",
+                "module": "video_loader",
+                "enabled": True,
+                "input_source": "disk",
+                "save_output": False,
+                "params": {}
+            },
+            # Stage 2: Cutie Disc Tracking
+            {
+                "name": "cutie_disc_tracking",
+                "module": "cutie_tracker",
+                "enabled": True,
+                "input_source": "memory",
+                "input_from_step": "ingestion",
+                "save_output": True,
+                "params": {
+                    "weights_path": "models/pretrained/cutie/cutie-base-mega.pth",
+                    "max_internal_size": 480,
+                    "mem_every": 5,
+                    "target_class_name": "frisbee",
+                    "min_mask_area": 100,
+                    "progress_every": 30
+                }
+            },
+            # Stage 3: YOLO Person Detection (segmentation)
+            {
+                "name": "yolo_person_detection",
+                "module": "yolo_detector",
+                "enabled": True,
+                "input_source": "memory",
+                "input_from_step": "ingestion",
+                "save_output": False,
+                "params": {
+                    "model_path": "models/pretrained/yolov8s-seg.pt",
+                    "task": "segment",
+                    "conf_threshold": 0.25,
+                    "source_name": "yolo_coco",
+                    "progress_every": 30
+                }
+            },
+            # Stage 4: YOLO Pose Estimation
+            {
+                "name": "yolo_pose",
+                "module": "yolo_detector",
+                "enabled": True,
+                "input_source": "memory",
+                "input_from_step": "ingestion",
+                "save_output": True,
+                "params": {
+                    "model_path": "models/pretrained/yolov8n-pose.pt",
+                    "task": "pose",
+                    "conf_threshold": 0.3,
+                    "source_name": "yolo_pose",
+                    "progress_every": 30
+                }
+            },
+            # Stage 5: Merge Cutie disc + YOLO person detections
+            {
+                "name": "merged_detections",
+                "module": "detection_merger",
+                "enabled": True,
+                "input_source": "memory",
+                "input_from_step": ["cutie_disc_tracking", "yolo_person_detection"],
+                "save_output": False,
+                "params": {}
+            },
+            # Stage 6: Tracking (assigns track IDs, handles association)
+            {
+                "name": "disc_tracking",
+                "module": "model_tracker",
+                "enabled": True,
+                "input_source": "memory",
+                "input_from_step": "merged_detections",
+                "save_output": False,
+                "params": {
+                    "enabled": True,
+                    "classes_to_track": ["frisbee", "person"],
+                    "single_object_classes": ["frisbee"],
+                    "min_det_score": 0.05,
+                    "high_det_score": 0.15,
+                    "max_age_frames": 30,
+                    "min_hits_to_confirm": 1,
+                    "association": {
+                        "max_center_dist_px": 200,
+                    },
+                    "progress_every": 30
+                }
+            },
+            # Stage 7: Track Refiner
+            {
+                "name": "track_refiner",
+                "module": "track_refiner",
+                "enabled": True,
+                "input_from_step": "disc_tracking",
+                "save_output": False,
+                "params": {
+                    "enabled": True,
+                    "classes_to_refine": ["frisbee", "person"],
+                    "smoothing": {
+                        "enabled": True,
+                        "method": "moving_average",
+                        "window": 5
+                    }
+                }
+            },
+            # Stage 8: Metrics Calculator
+            {
+                "name": "metrics_calculator",
+                "module": "metrics_calculator",
+                "enabled": True,
+                "input_from_step": "track_refiner",
+                "save_output": True,
+                "params": {
+                    "target_class": "frisbee",
+                    "fallback_classes": ["person"],
+                    "physical_params": {
+                        "disc_diameter_m": 0.45,
+                        "disc_weight_kg": 20.0,
+                        "bar_weight_kg": 20.0,
+                        "num_discs": 2
+                    }
+                }
+            }
+        ]
+    }
+    
+    # Add disc selection data to cutie_tracker step and model_tracker step
+    if selection_data:
+        for step in config["steps"]:
+            if step["name"] == "cutie_disc_tracking":
+                # CutieTracker._get_selection() looks for "initial_selection" key
+                step["params"]["initial_selection"] = {
+                    "center": selection_data.get("center"),
+                    "radius": selection_data.get("radius")
+                }
+            if step["name"] == "disc_tracking":
+                step["params"]["initial_selection"] = {
+                    "class_name": "frisbee",
+                    "center": selection_data.get("center"),
+                    "radius": selection_data.get("radius")
+                }
+    
+    return config
+
+
+def _create_yolo_pipeline_config(
+    video_path: str,
+    output_dir: str,
+    selection_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Create pipeline config using YOLO for all detection + tracking (original flow).
+    
+    Flow: ingestion → yolo_detection → detection_filter → tracker → refiner → metrics
+    """
+    video_id_from_path = Path(video_path).parent.name
+    
+    config = {
+        "session": {
+            "video_id": video_id_from_path,
+            "output_dir": output_dir,
+        },
+        "steps": [
+            # Ingestion
             {
                 "name": "ingestion",
                 "module": "video_loader",
@@ -159,7 +355,7 @@ def create_api_pipeline_config(
                 "input_from_step": "track_refiner",
                 "save_output": True,
                 "params": {
-                    "target_class": "frisbee",  # Will try frisbee, sports ball, etc.
+                    "target_class": "frisbee",
                     "fallback_classes": ["sports ball", "person"],
                     "physical_params": {
                         "disc_diameter_m": 0.45,
@@ -175,10 +371,9 @@ def create_api_pipeline_config(
     # Add initial selection if provided
     if selection_data:
         for step in config["steps"]:
-            # Detection filter: initial selector to pick best detection in frame 0
             if step["name"] == "detection_filter":
                 step["params"]["size_filter"] = {
-                    "enabled": False,  # Disabled - COCO frisbee sizes don't match barbell disc
+                    "enabled": False,
                     "reference_radius": selection_data.get("radius", 50),
                     "tolerance": 0.50,
                     "classes": ["frisbee", "sports ball"]
@@ -189,8 +384,6 @@ def create_api_pipeline_config(
                     "reference_center": selection_data.get("center"),
                     "reference_radius": selection_data.get("radius")
                 }
-            
-            # Model tracker: enable single-object mode with initial selection
             if step["name"] == "disc_tracking":
                 step["params"]["initial_selection"] = {
                     "class_name": "frisbee",
@@ -416,16 +609,20 @@ async def process_video_task(video_id: str):
         from pipeline.runner import PipelineRunner
         from pipeline.config import PipelineConfig
         
-        # Get selection data from job
+        # Get selection data and tracking backend from job
         selection_data = job.selection_data
+        tracking_backend = job.tracking_backend or DEFAULT_TRACKING_BACKEND
+        
         if selection_data:
             print(f"[Task] Using disc selection: center={selection_data['center']}, radius={selection_data['radius']}")
+        print(f"[Task] Tracking backend: {tracking_backend}")
         
         # Create pipeline config
         config_dict = create_api_pipeline_config(
             video_path=video_path,
             output_dir=str(results_dir),
-            selection_data=selection_data
+            selection_data=selection_data,
+            tracking_backend=tracking_backend
         )
         
         # Write config to YAML file
@@ -446,6 +643,7 @@ async def process_video_task(video_id: str):
         from perception.yolo_detector import YoloDetector
         from perception.cutie_tracker import CutieTracker
         from analysis.detection_filter import DetectionFilter
+        from analysis.merger import DetectionMerger
         from analysis.model_tracker import ModelTracker
         from analysis.track_refiner import TrackRefiner
         from analysis.metrics_calculator import MetricsCalculator
@@ -458,6 +656,7 @@ async def process_video_task(video_id: str):
         runner.register_step("yolo_detector", YoloDetector)
         runner.register_step("cutie_tracker", CutieTracker)
         runner.register_step("detection_filter", DetectionFilter)
+        runner.register_step("detection_merger", DetectionMerger)
         runner.register_step("model_tracker", ModelTracker)
         runner.register_step("track_refiner", TrackRefiner)
         runner.register_step("metrics_calculator", MetricsCalculator)

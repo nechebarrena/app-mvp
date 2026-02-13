@@ -65,7 +65,8 @@ async def upload_video(
     file: UploadFile = File(..., description="Video file to analyze"),
     disc_center_x: Optional[float] = Form(None, description="Disc center X coordinate (pixels)"),
     disc_center_y: Optional[float] = Form(None, description="Disc center Y coordinate (pixels)"),
-    disc_radius: Optional[float] = Form(None, description="Disc radius (pixels)")
+    disc_radius: Optional[float] = Form(None, description="Disc radius (pixels)"),
+    tracking_backend: Optional[str] = Form(None, description="Tracking backend: 'cutie' or 'yolo' (server-side config)")
 ):
     """Upload a video for processing with optional disc selection."""
     storage = get_storage()
@@ -114,7 +115,8 @@ async def upload_video(
         video_id, 
         video_path, 
         selection_data=selection_data,
-        original_filename=file.filename or "video.mp4"
+        original_filename=file.filename or "video.mp4",
+        tracking_backend=tracking_backend
     )
     
     # Queue for processing
