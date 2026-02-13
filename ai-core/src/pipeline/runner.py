@@ -35,6 +35,7 @@ class PipelineRunner:
     - Variable substitution: Use ${var_name} in YAML, defined in 'variables' section
     - Disc selection: Can run interactive tool or load from file
     - Video metadata propagation: fps, resolution, etc. available to all steps
+    - Optional progress callback: reports step-level progress to caller
     """
     
     def __init__(self, config_path: Path):
@@ -49,6 +50,9 @@ class PipelineRunner:
         
         self.registry: Dict[str, Type[IPipelineStep]] = {}
         self.step_outputs: Dict[str, Any] = {}
+        
+        # Optional progress callback: fn(step_name, step_index, total_steps)
+        self.on_step_start = None
         
     def register_step(self, module_name: str, step_class: Type[IPipelineStep]):
         """Registers a class to be usable as a pipeline step."""
@@ -229,10 +233,23 @@ class PipelineRunner:
         
         last_result = None
         
+        # Count enabled steps for progress
+        enabled_steps = [s for s in self.config.steps if s.enabled]
+        total_steps = len(enabled_steps)
+        current_step_idx = 0
+        
         for step_config in self.config.steps:
             if not step_config.enabled:
                 self.logger.info(f"Skipping step '{step_config.name}' (disabled)")
                 continue
+            
+            # Report progress via callback
+            if self.on_step_start:
+                try:
+                    self.on_step_start(step_config.name, current_step_idx, total_steps)
+                except Exception:
+                    pass  # Don't let callback errors break the pipeline
+            current_step_idx += 1
                 
             self.logger.info(f"Executing step: {step_config.name} (Module: {step_config.module})")
             

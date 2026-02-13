@@ -189,6 +189,7 @@ def _create_cutie_pipeline_config(
                 "params": {}
             },
             # Stage 6: Tracking (assigns track IDs, handles association)
+            # single_object_classes ensures at most 1 disc + 1 person tracked
             {
                 "name": "disc_tracking",
                 "module": "model_tracker",
@@ -199,13 +200,13 @@ def _create_cutie_pipeline_config(
                 "params": {
                     "enabled": True,
                     "classes_to_track": ["frisbee", "person"],
-                    "single_object_classes": ["frisbee"],
+                    "single_object_classes": ["frisbee", "person"],
                     "min_det_score": 0.05,
                     "high_det_score": 0.15,
-                    "max_age_frames": 30,
+                    "max_age_frames": 90,
                     "min_hits_to_confirm": 1,
                     "association": {
-                        "max_center_dist_px": 200,
+                        "max_center_dist_px": 300,
                     },
                     "progress_every": 30
                 }
@@ -681,10 +682,23 @@ async def process_video_task(video_id: str):
         runner.register_step("track_refiner", TrackRefiner)
         runner.register_step("metrics_calculator", MetricsCalculator)
         
+        # Set up progress callback so each pipeline step updates the job
+        def on_step_progress(step_name, step_idx, total_steps):
+            # Map step progress linearly from 0.15 to 0.85
+            progress = 0.15 + (step_idx / max(1, total_steps)) * 0.70
+            storage.update_job(
+                video_id,
+                progress=round(progress, 2),
+                current_step=step_name,
+                message=f"Running {step_name} ({step_idx + 1}/{total_steps})..."
+            )
+        
+        runner.on_step_start = on_step_progress
+        
         # Update status
         storage.update_job(
             video_id,
-            progress=0.2,
+            progress=0.15,
             current_step="running_pipeline",
             message="Running AI analysis..."
         )

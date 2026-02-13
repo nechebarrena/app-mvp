@@ -144,11 +144,11 @@ steps:
         class_name: "frisbee"
       min_det_score: 0.05
       high_det_score: 0.15
-      max_age_frames: 30
+      max_age_frames: 90
       min_hits_to_confirm: 1
       association:
-        max_center_dist_px: 200
-      single_object_classes: ["frisbee"]
+        max_center_dist_px: 300
+      single_object_classes: ["frisbee", "person"]
       output:
         save_tracked_detections: true
         save_tracks_summary: true
