@@ -33,12 +33,18 @@ class UploadResponse(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """Response for processing status check."""
+    """Response for processing status check.
+    
+    The `message` field contains a human-readable, UI-friendly description
+    of the current processing state. The mobile app should display this
+    directly to the user. The `current_step` field is a technical identifier
+    useful for debugging but should NOT be displayed to the user.
+    """
     video_id: str
     status: ProcessingStatus
     progress: float = Field(0.0, ge=0.0, le=1.0, description="Progress from 0 to 1")
-    current_step: Optional[str] = Field(None, description="Current processing step")
-    message: Optional[str] = None
+    current_step: Optional[str] = Field(None, description="Technical step name (for debugging)")
+    message: Optional[str] = Field(None, description="Human-readable status message (display to user)")
     created_at: datetime
     updated_at: datetime
     
@@ -48,10 +54,10 @@ class StatusResponse(BaseModel):
                 "video_id": "abc123",
                 "status": "processing",
                 "progress": 0.45,
-                "current_step": "yolo_detection",
-                "message": "Processing YOLO detection...",
-                "created_at": "2026-01-29T10:00:00",
-                "updated_at": "2026-01-29T10:01:30"
+                "current_step": "cutie_disc_tracking",
+                "message": "Tracking disc (2/5)",
+                "created_at": "2026-02-13T21:38:26",
+                "updated_at": "2026-02-13T21:38:50"
             }
         }
 

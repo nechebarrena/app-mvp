@@ -21,6 +21,20 @@ from .storage import get_storage
 # Default tracking backend (server-side config, can be changed via API)
 DEFAULT_TRACKING_BACKEND = "cutie"
 
+# Human-readable step names for progress reporting to mobile clients
+STEP_DISPLAY_NAMES = {
+    "ingestion": "Loading video",
+    "cutie_disc_tracking": "Tracking disc",
+    "yolo_person_detection": "Detecting athlete",
+    "yolo_pose": "Estimating pose",
+    "merged_detections": "Merging detections",
+    "yolo_coco_detection": "Detecting objects",
+    "detection_filter": "Filtering detections",
+    "disc_tracking": "Assigning tracks",
+    "track_refiner": "Refining trajectory",
+    "metrics_calculator": "Calculating metrics",
+}
+
 # Server-side runtime config (mutable, set by control panel)
 _server_config = {
     "tracking_backend": DEFAULT_TRACKING_BACKEND,
@@ -619,7 +633,7 @@ async def process_video_task(video_id: str):
             video_id,
             status=ProcessingStatus.PROCESSING,
             progress=0.0,
-            message="Starting pipeline..."
+            message="Starting analysis..."
         )
         
         video_path = job.video_path
@@ -693,7 +707,7 @@ async def process_video_task(video_id: str):
             video_id,
             progress=0.1,
             current_step="initializing",
-            message="Initializing pipeline..."
+            message="Initializing models..."
         )
         
         # Import and register modules
@@ -723,11 +737,12 @@ async def process_video_task(video_id: str):
         def on_step_progress(step_name, step_idx, total_steps):
             # Map step progress linearly from 0.15 to 0.85
             progress = 0.15 + (step_idx / max(1, total_steps)) * 0.70
+            display_name = STEP_DISPLAY_NAMES.get(step_name, step_name)
             storage.update_job(
                 video_id,
                 progress=round(progress, 2),
                 current_step=step_name,
-                message=f"Running {step_name} ({step_idx + 1}/{total_steps})..."
+                message=f"{display_name} ({step_idx + 1}/{total_steps})"
             )
         
         runner.on_step_start = on_step_progress
@@ -737,7 +752,7 @@ async def process_video_task(video_id: str):
             video_id,
             progress=0.15,
             current_step="running_pipeline",
-            message="Running AI analysis..."
+            message="Processing video..."
         )
         
         # Run pipeline (synchronously in thread)
@@ -748,7 +763,7 @@ async def process_video_task(video_id: str):
             video_id,
             progress=0.9,
             current_step="extracting_results",
-            message="Extracting results..."
+            message="Building results..."
         )
         
         # Get video metadata from runner
@@ -797,7 +812,7 @@ async def process_video_task(video_id: str):
             status=ProcessingStatus.COMPLETED,
             progress=1.0,
             current_step=None,
-            message="Processing completed successfully",
+            message="Analysis complete",
             results_path=str(results_path)
         )
         
