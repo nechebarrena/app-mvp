@@ -168,8 +168,8 @@ steps:
       classes_to_refine: ["frisbee", "person"]
       smoothing:
         enabled: true
-        method: "moving_average"
-        window: 5
+        method: "savgol"
+        window: 11
 
   # ============================================================
   # STAGE 8: Metrics Calculation
@@ -183,7 +183,7 @@ steps:
     params:
       physical_params_file: "configs/physical_params.yaml"
       target_class: "frisbee"
-      smooth_window: 5
+      smooth_window: 11
 
   # ============================================================
   # STAGE 9: Metrics Visualization

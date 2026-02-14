@@ -242,8 +242,8 @@ def _create_cutie_pipeline_config(
                 "classes_to_refine": classes,
                 "smoothing": {
                     "enabled": True,
-                    "method": "moving_average",
-                    "window": 5
+                    "method": "savgol",
+                    "window": 11
                 }
             }
         },
@@ -256,6 +256,7 @@ def _create_cutie_pipeline_config(
             "params": {
                 "target_class": "frisbee",
                 "fallback_classes": ["person"] if enable_person_detection else [],
+                "smooth_window": 11,
                 "physical_params": {
                     "disc_diameter_m": 0.45,
                     "disc_weight_kg": 20.0,
@@ -386,8 +387,8 @@ def _create_yolo_pipeline_config(
                     "classes_to_refine": ["frisbee", "person", "sports ball"],
                     "smoothing": {
                         "enabled": True,
-                        "method": "moving_average",
-                        "window": 5
+                        "method": "savgol",
+                        "window": 11
                     }
                 }
             },
@@ -401,6 +402,7 @@ def _create_yolo_pipeline_config(
                 "params": {
                     "target_class": "frisbee",
                     "fallback_classes": ["sports ball", "person"],
+                    "smooth_window": 11,
                     "physical_params": {
                         "disc_diameter_m": 0.45,
                         "disc_weight_kg": 20.0,
@@ -527,17 +529,18 @@ def build_api_results(
                     
                     track_dict[tid]["frames"][str(frame_idx)] = frame_data
         
-        # Build trajectory from mask centroids (preferred) or bbox centers
+        # Build trajectory from mask centroids (preferred) or bbox centers,
+        # then smooth with Savitzky-Golay to remove frame-to-frame jitter
+        import numpy as np
         for tid, track_data in track_dict.items():
             sorted_frame_indices = sorted(track_data["frames"].keys(), key=lambda k: int(k))
-            track_data["trajectory"] = []
+            raw_points = []
             for fidx in sorted_frame_indices:
                 fdata = track_data["frames"][fidx]
                 cx, cy = None, None
                 
                 # Prefer mask centroid for trajectory
                 if fdata.get("mask") and isinstance(fdata["mask"], list) and len(fdata["mask"]) > 0:
-                    import numpy as np
                     pts = np.array(fdata["mask"])
                     cx = float(pts[:, 0].mean())
                     cy = float(pts[:, 1].mean())
@@ -547,7 +550,19 @@ def build_api_results(
                     cy = (bbox["y1"] + bbox["y2"]) / 2.0
                 
                 if cx is not None and cy is not None:
-                    track_data["trajectory"].append([cx, cy])
+                    raw_points.append([cx, cy])
+            
+            # Apply Savitzky-Golay smoothing to trajectory
+            if len(raw_points) >= 7:
+                from scipy.signal import savgol_filter
+                arr = np.array(raw_points)
+                # window_length must be odd and <= len; polyorder=3 preserves peaks
+                window = min(11, len(arr) if len(arr) % 2 == 1 else len(arr) - 1)
+                arr[:, 0] = savgol_filter(arr[:, 0], window_length=window, polyorder=3)
+                arr[:, 1] = savgol_filter(arr[:, 1], window_length=window, polyorder=3)
+                track_data["trajectory"] = [[float(x), float(y)] for x, y in arr]
+            else:
+                track_data["trajectory"] = raw_points
         
         tracks = list(track_dict.values())
     

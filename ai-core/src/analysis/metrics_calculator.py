@@ -347,19 +347,30 @@ class MetricsCalculator(IPipelineStep[Dict[int, List[TrackedObject]], pd.DataFra
         return df
     
     def _smooth(self, values: np.ndarray, window: int) -> np.ndarray:
-        """Apply moving average smoothing."""
+        """Apply Savitzky-Golay smoothing (preserves peaks better than moving average).
+        
+        Uses polynomial order 3 by default. Falls back to moving average
+        if data is too short for savgol.
+        """
         if len(values) < window:
             return values
         
-        kernel = np.ones(window) / window
-        # Use 'same' mode and handle edges
-        smoothed = np.convolve(values, kernel, mode='same')
+        # Ensure window is odd
+        if window % 2 == 0:
+            window += 1
         
-        # Fix edges by using original values
+        # Savitzky-Golay needs window <= len and polyorder < window
+        if len(values) >= window and window >= 5:
+            from scipy.signal import savgol_filter
+            polyorder = min(3, window - 1)
+            return savgol_filter(values, window_length=window, polyorder=polyorder)
+        
+        # Fallback: simple moving average for very short sequences
+        kernel = np.ones(window) / window
+        smoothed = np.convolve(values, kernel, mode='same')
         half = window // 2
         smoothed[:half] = values[:half]
         smoothed[-half:] = values[-half:]
-        
         return smoothed
     
     def save_result(self, data: pd.DataFrame, output_path: Path) -> None:
