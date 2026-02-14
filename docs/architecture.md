@@ -86,35 +86,50 @@ Disc Selection → [Cutie VOS Tracker] → [Post-Tracking] → Output
 - **Advantages**: 100% frame coverage, handles occlusions, no COCO class dependency
 - **Output**: Same `Dict[int, List[Detection]]` format as YOLO — fully plug-and-play
 
-Both backends use YOLO for person detection and pose estimation.
+Person detection and pose estimation with YOLO are **optional** and can be toggled on/off from the Control Panel. By default they are off for faster processing.
 
 ### Shared Post-Tracking
 
 - **TrackRefiner**: Smoothing (moving average, exponential), outlier removal
 - **MetricsCalculator**: Physics-based metrics (velocity, acceleration, energy, power)
 
-## 4. Data Flow (The Hybrid Pipeline)
+## 4. Data Flow (The Pipeline)
 The system uses a configurable pipeline orchestrator (`ai-core/src/pipeline/runner.py`) driven by YAML files.
 
 ### Execution Modes
 1.  **Memory Mode (Default):** Modules pass Pydantic objects directly in RAM.
 2.  **Disk Mode (Debug):** Modules save/load intermediate results (JSON) to allow partial re-runs.
 
-### Non-Linear Execution
-Steps can declare inputs explicitly, allowing parallel branches:
+### Pipeline Variants
 
-**YOLO-only pipeline** (`configs/full_analysis.yaml`):
+**Minimal pipeline (disc only — default, fastest):**
 ```
-Ingestion ─┬─> YOLO COCO ──> Filter ─> Track ─> Refine ─┬─> Visualization
-           └─> YOLO Pose ───────────────────────────────┘
+Ingestion ─> Cutie (disc) ─> Track ─> Refine ─> Metrics
 ```
 
-**Cutie + YOLO hybrid pipeline** (`configs/cutie_analysis.yaml`):
+**With person detection:**
 ```
-Ingestion ─┬─> Cutie (disc) ────────┐
-           ├─> YOLO COCO (person) ──┼─> Merger ─> Track ─> Refine ─┬─> Visualization
-           └─> YOLO Pose ───────────┤                               │
-                                    └───────────────────────────────┘
+Ingestion ─┬─> Cutie (disc) ─────────┐
+           └─> YOLO COCO (person) ──┼─> Merger ─> Track ─> Refine ─> Metrics
+```
+
+**Full pipeline (all models):**
+```
+Ingestion ─┬─> Cutie (disc) ─────────┐
+           ├─> YOLO COCO (person) ──┼─> Merger ─> Track ─> Refine ─> Metrics
+           └─> YOLO Pose ──────────┘
 ```
 
 See [docs/pipeline_guide.md](pipeline_guide.md) for details on configuring runs.
+
+## 5. API Contract
+
+The server produces a JSON result with these **guaranteed** elements:
+- `metadata` — video properties (fps, resolution, frames, duration)
+- `tracks` — at least one track with `class_name="frisbee"` containing mask + trajectory
+- `metrics` — 13 time series for the disc (position, velocity, energy, power)
+- `summary` — peak values (speed, power, height)
+
+Optional: person track (only if person detection is enabled server-side).
+
+See [docs/api_guide.md](api_guide.md) for the full contract specification.

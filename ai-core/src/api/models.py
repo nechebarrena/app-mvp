@@ -74,16 +74,28 @@ class BoundingBox(BaseModel):
 
 
 class FrameDetection(BaseModel):
-    """Detection data for a single frame."""
-    bbox: BoundingBox
+    """Detection data for a single frame.
+    
+    For disc tracks: mask is always present (polygon contour), bbox is optional.
+    For person tracks (optional): bbox is always present, mask is optional.
+    """
+    bbox: Optional[BoundingBox] = Field(None, description="Bounding box (optional for disc)")
     mask: Optional[List[List[float]]] = Field(None, description="Polygon points [[x,y], ...]")
     confidence: float = Field(..., ge=0.0, le=1.0)
 
 
 class Track(BaseModel):
-    """Complete track data for an object."""
+    """Complete track data for an object.
+    
+    Required tracks:
+      - Exactly one track with class_name="frisbee" (the disc). Must have mask + trajectory.
+    
+    Optional tracks:
+      - At most one track with class_name="person" (the athlete). Present only if
+        person detection is enabled on the server.
+    """
     track_id: int
-    class_name: str
+    class_name: str = Field(..., description="'frisbee' for disc (required), 'person' for athlete (optional)")
     frames: Dict[int, FrameDetection] = Field(..., description="Frame index -> detection")
     trajectory: List[List[float]] = Field(..., description="Center points [[x, y], ...]")
     
@@ -91,12 +103,12 @@ class Track(BaseModel):
         json_schema_extra = {
             "example": {
                 "track_id": 1,
-                "class_name": "disco",
+                "class_name": "frisbee",
                 "frames": {
-                    "0": {"bbox": {"x1": 100, "y1": 200, "x2": 150, "y2": 250}, "confidence": 0.92},
-                    "1": {"bbox": {"x1": 102, "y1": 198, "x2": 152, "y2": 248}, "confidence": 0.89}
+                    "0": {"mask": [[100, 200], [110, 210], [120, 200]], "confidence": 0.95},
+                    "1": {"mask": [[102, 198], [112, 208], [122, 198]], "confidence": 0.93}
                 },
-                "trajectory": [[125, 225], [127, 223]]
+                "trajectory": [[110, 205], [112, 203]]
             }
         }
 
@@ -129,12 +141,23 @@ class MetricsSummary(BaseModel):
 
 
 class AnalysisResults(BaseModel):
-    """Complete analysis results returned to the client."""
+    """Complete analysis results returned to the client.
+    
+    Guaranteed content (the mobile app can always rely on):
+      - metadata: video properties (fps, resolution, frames, duration)
+      - tracks: at least one track with class_name="frisbee" containing mask + trajectory
+      - metrics: full time series for the disc (position, velocity, energy, power)
+      - summary: peak values (speed, power, height)
+    
+    Optional content (may or may not be present):
+      - A "person" track (only if person detection is enabled server-side)
+      - bbox in frame detections (always present for person, optional for disc)
+    """
     video_id: str
     status: ProcessingStatus
     metadata: VideoMetadata
-    tracks: List[Track] = Field(..., description="Tracked objects")
-    metrics: MetricsSeries = Field(..., description="Time series metrics")
+    tracks: List[Track] = Field(..., description="Tracked objects (always includes disc)")
+    metrics: MetricsSeries = Field(..., description="Time series metrics for the disc")
     summary: MetricsSummary = Field(..., description="Summary statistics")
     processed_at: datetime
     
@@ -150,7 +173,16 @@ class AnalysisResults(BaseModel):
                     "duration_s": 3.67,
                     "total_frames": 110
                 },
-                "tracks": [],
+                "tracks": [
+                    {
+                        "track_id": 1,
+                        "class_name": "frisbee",
+                        "frames": {
+                            "0": {"mask": [[100, 200], [110, 210]], "confidence": 0.95}
+                        },
+                        "trajectory": [[110, 205]]
+                    }
+                ],
                 "metrics": {
                     "frames": [0, 1, 2],
                     "time_s": [0.0, 0.033, 0.067],

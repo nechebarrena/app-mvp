@@ -1,6 +1,6 @@
 # AI Core
 
-Python processing engine for video analysis using YOLO and Cutie VOS models.
+Python processing engine for video analysis using Cutie VOS and YOLO models.
 
 ## Structure
 
@@ -22,17 +22,21 @@ ai-core/
 │   ├── visualization/    # Video renderers
 │   ├── api/              # FastAPI backend
 │   └── pipeline/         # Orchestration
-└── run_pipeline.py       # Entry point
+├── control_panel.py      # Web-based control panel (Flask)
+├── run_pipeline.py       # CLI entry point
+└── run_api.py            # Direct FastAPI launch
 ```
 
-## Usage
+## Quick Start
 
-### YOLO-only pipeline (original)
+### Control Panel (recommended)
 ```bash
-PYTHONPATH=src:. uv run python run_pipeline.py configs/full_analysis.yaml
+cd ai-core
+PYTHONPATH=vendors/cutie:src:. uv run python control_panel.py
 ```
+Opens a web dashboard at `http://localhost:5001` to manage services, configure models, process videos.
 
-### Cutie + YOLO hybrid pipeline (recommended for disc tracking)
+### CLI pipeline
 ```bash
 PYTHONPATH=vendors/cutie:src:. uv run python run_pipeline.py configs/cutie_analysis.yaml
 ```
@@ -42,26 +46,39 @@ PYTHONPATH=vendors/cutie:src:. uv run python run_pipeline.py configs/cutie_analy
 PYTHONPATH=vendors/cutie:src:. uv run python ../tools/test_cutie.py <video> <selection.json> --save-video
 ```
 
+## Model Configuration
+
+The pipeline's model usage is configurable from the Control Panel:
+
+| Model | Purpose | Default | Toggle |
+|-------|---------|---------|--------|
+| **Cutie VOS** | Disc tracking (mask + trajectory) | ON (required) | Backend selector |
+| **YOLO person** | Athlete segmentation mask | OFF | Optional toggle |
+| **YOLO pose** | Skeleton keypoints | OFF | Optional toggle |
+
+**Disc-only mode (default):** Only Cutie runs. Fastest processing (~5 pipeline steps).
+
+**With person/pose:** Adds YOLO steps. Slower but provides athlete overlay data.
+
+## API Output Contract
+
+The server always returns:
+- `metadata` — video properties (fps, resolution, frames, duration)
+- `tracks` — at least one disc track (`class_name="frisbee"`) with mask + trajectory
+- `metrics` — 13 time series (position, velocity, energy, power)
+- `summary` — peak values
+
+See [`docs/api_guide.md`](../docs/api_guide.md) for the full specification.
+
 ## Key Modules
 
 | Module | Description |
 |--------|-------------|
-| `yolo_detector` | Generic YOLO (detect/segment/pose) |
 | `cutie_tracker` | Cutie VOS semi-supervised tracker |
+| `yolo_detector` | Generic YOLO (detect/segment/pose) |
 | `detection_merger` | Merge detections from multiple models |
 | `model_tracker` | Kalman + Hungarian object tracker |
 | `metrics_calculator` | Physics metrics (velocity, energy, power) |
-| `multi_model_renderer` | Multi-panel comparison video |
-
-## Tracking Backends
-
-| Backend | Disc Detection | Coverage | Requires Selection | Mobile-Ready |
-|---------|---------------|----------|-------------------|-------------|
-| YOLO | COCO "frisbee" class | ~10-50% | Optional | Yes (lightweight) |
-| Cutie | Visual appearance | ~100% | Required | Future (with optimization) |
-
-The recommended approach for server-side processing is the Cutie hybrid pipeline.
-YOLO is maintained for person detection, pose estimation, and future mobile deployment.
 
 ## Setup
 
@@ -69,7 +86,7 @@ YOLO is maintained for person detection, pose estimation, and future mobile depl
 # Install dependencies
 uv sync
 
-# Download Cutie weights (required for Cutie pipeline)
+# Download Cutie weights (required)
 curl -L -o models/pretrained/cutie/cutie-base-mega.pth \
   https://github.com/hkchengrex/Cutie/releases/download/v1.0/cutie-base-mega.pth
 ```

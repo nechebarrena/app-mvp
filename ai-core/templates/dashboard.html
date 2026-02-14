@@ -570,6 +570,57 @@
             background: #3b82f6;
             color: white;
         }
+        
+        .toggle-option {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .toggle-option:hover {
+            border-color: var(--text-secondary);
+        }
+        
+        .toggle-option.active {
+            border-color: var(--success);
+            background: rgba(74, 222, 128, 0.1);
+        }
+        
+        .toggle-checkbox {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid var(--border);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .toggle-option.active .toggle-checkbox {
+            background: var(--success);
+            border-color: var(--success);
+        }
+        
+        .toggle-option.active .toggle-checkbox::after {
+            content: '✓';
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        .model-info-badge.off {
+            background: var(--border);
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -674,17 +725,37 @@ Content-Type: multipart/form-data</pre>
             <h2><span class="step-number">2</span> Model Configuration</h2>
             
             <p style="color: var(--text-secondary); margin-bottom: 15px;">
-                Select the tracking backend for disc detection. Person detection and pose estimation always use YOLO.
+                Configure which models to run. Only disc tracking is required.
             </p>
             
             <!-- Backend selector -->
+            <div style="font-weight: 500; margin-bottom: 8px; font-size: 0.9rem;">Disc Tracking Backend</div>
             <div id="backend-selector" style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <!-- Filled dynamically -->
             </div>
             
+            <!-- Optional models toggles -->
+            <div style="font-weight: 500; margin-bottom: 8px; font-size: 0.9rem;">Optional Models</div>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <label class="toggle-option" id="toggle-person" onclick="toggleOptionalModel('person_detection')">
+                    <div class="toggle-checkbox" id="check-person"></div>
+                    <div>
+                        <div style="font-weight: 500; font-size: 0.9rem;">Person Detection</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">YOLOv8s-seg — athlete mask + bbox</div>
+                    </div>
+                </label>
+                <label class="toggle-option" id="toggle-pose" onclick="toggleOptionalModel('pose_estimation')">
+                    <div class="toggle-checkbox" id="check-pose"></div>
+                    <div>
+                        <div style="font-weight: 500; font-size: 0.9rem;">Pose Estimation</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">YOLOv8n-pose — skeleton keypoints</div>
+                    </div>
+                </label>
+            </div>
+            
             <!-- Active models info panel -->
             <div id="active-models-panel" style="background: var(--bg-card); border-radius: 8px; padding: 15px;">
-                <div style="font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Active Models</div>
+                <div style="font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Pipeline Summary</div>
                 <div id="active-models-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <!-- Filled dynamically -->
                 </div>
@@ -829,13 +900,14 @@ Content-Type: multipart/form-data</pre>
                     updateSelectionDisplay(currentStatus.current_selection);
                 }
                 
-                // Update model configuration panel (only on first load or backend change)
+                // Update model configuration panel (first load or backend change)
                 if (currentStatus.tracking) {
                     if (!backendRendered || currentStatus.tracking.backend !== currentBackend) {
                         renderBackendSelector(currentStatus.tracking);
-                        renderActiveModels(currentStatus.tracking);
                         backendRendered = true;
                     }
+                    // Always update active models (toggle state may change)
+                    renderActiveModels(currentStatus.tracking);
                 }
                 
                 // Update Mobile Ready section
@@ -1057,9 +1129,21 @@ Content-Type: multipart/form-data</pre>
             const container = document.getElementById('active-models-grid');
             const info = tracking.backend_info || {};
             const backend = tracking.backend || 'cutie';
+            const optModels = currentStatus.optional_models || {};
+            const personOn = optModels.person_detection || false;
+            const poseOn = optModels.pose_estimation || false;
             
             const discBadgeClass = backend === 'cutie' ? 'cutie' : 'yolo';
             const requiresSelection = info.requires_selection;
+            
+            // Update toggle UI
+            document.getElementById('toggle-person').classList.toggle('active', personOn);
+            document.getElementById('toggle-pose').classList.toggle('active', poseOn);
+            
+            // Count active steps
+            let stepCount = 4; // ingestion + cutie/yolo + tracker + refiner + metrics (min)
+            if (personOn) stepCount += 2; // person detection + merger
+            if (poseOn) stepCount += 1;
             
             container.innerHTML = `
                 <div class="model-info-row" style="grid-column: 1 / -1;">
@@ -1069,13 +1153,13 @@ Content-Type: multipart/form-data</pre>
                 </div>
                 <div class="model-info-row">
                     <div class="model-info-role">Person</div>
-                    <div class="model-info-name">${info.person_model || '-'}</div>
-                    <span class="model-info-badge yolo">YOLO</span>
+                    <div class="model-info-name">${personOn ? (info.person_model || 'YOLOv8s-seg') : 'Disabled'}</div>
+                    <span class="model-info-badge ${personOn ? 'yolo' : 'off'}">${personOn ? 'ON' : 'OFF'}</span>
                 </div>
                 <div class="model-info-row">
                     <div class="model-info-role">Pose</div>
-                    <div class="model-info-name">${info.pose_model || '-'}</div>
-                    <span class="model-info-badge yolo">YOLO</span>
+                    <div class="model-info-name">${poseOn ? (info.pose_model || 'YOLOv8n-pose') : 'Disabled'}</div>
+                    <span class="model-info-badge ${poseOn ? 'yolo' : 'off'}">${poseOn ? 'ON' : 'OFF'}</span>
                 </div>
                 ${requiresSelection ? `
                 <div style="grid-column: 1 / -1; margin-top: 4px; padding: 8px 10px; background: rgba(233, 69, 96, 0.1); border-radius: 6px; font-size: 0.8rem; color: var(--warning);">
@@ -1084,7 +1168,34 @@ Content-Type: multipart/form-data</pre>
                 <div style="grid-column: 1 / -1; margin-top: 4px; padding: 8px 10px; background: rgba(74, 222, 128, 0.1); border-radius: 6px; font-size: 0.8rem; color: var(--success);">
                     ✓ YOLO auto-detection — disc selection is optional but recommended
                 </div>`}
+                <div style="grid-column: 1 / -1; margin-top: 4px; padding: 6px 10px; background: var(--bg-primary); border-radius: 6px; font-size: 0.8rem; color: var(--text-secondary);">
+                    Pipeline: ~${stepCount} steps${!personOn && !poseOn ? ' (disc only — fastest)' : ''}
+                </div>
             `;
+        }
+        
+        async function toggleOptionalModel(model) {
+            const optModels = currentStatus.optional_models || {};
+            const newValue = !optModels[model];
+            
+            try {
+                const response = await fetch('/api/optional-models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [model]: newValue })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    currentStatus.optional_models = {
+                        person_detection: result.person_detection,
+                        pose_estimation: result.pose_estimation
+                    };
+                    renderActiveModels(currentStatus.tracking || {});
+                }
+            } catch (e) {
+                console.error('Toggle model failed:', e);
+            }
+            updateLogs();
         }
         
         async function selectBackend(backend) {

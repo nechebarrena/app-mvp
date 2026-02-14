@@ -72,6 +72,8 @@ class AppState:
     current_selection: Optional[Dict[str, Any]] = None
     current_job_id: Optional[str] = None
     tracking_backend: str = "cutie"  # Default to Cutie (recommended)
+    enable_person_detection: bool = False  # YOLO person segmentation (optional)
+    enable_pose_estimation: bool = False   # YOLO pose estimation (optional)
     
 state = AppState()
 
@@ -183,6 +185,10 @@ def api_status():
             "backend": state.tracking_backend,
             "backend_info": backend_info,
             "available_backends": TRACKING_BACKENDS
+        },
+        "optional_models": {
+            "person_detection": state.enable_person_detection,
+            "pose_estimation": state.enable_pose_estimation
         }
     })
 
@@ -329,18 +335,10 @@ def start_fastapi():
             time.sleep(0.5)
             if check_fastapi_health():
                 log("FastAPI server started successfully", "success")
-                # Sync tracking backend with FastAPI
-                try:
-                    import requests as req
-                    req.post(
-                        f"http://localhost:{FASTAPI_PORT}/api/v1/config/tracking-backend",
-                        json={"backend": state.tracking_backend},
-                        timeout=3
-                    )
-                    backend_name = TRACKING_BACKENDS.get(state.tracking_backend, {}).get("name", state.tracking_backend)
-                    log(f"FastAPI synced to tracking backend: {backend_name}")
-                except:
-                    pass
+                # Sync all model config with FastAPI
+                _sync_model_config_to_fastapi()
+                backend_name = TRACKING_BACKENDS.get(state.tracking_backend, {}).get("name", state.tracking_backend)
+                log(f"FastAPI synced: backend={backend_name}, person={'ON' if state.enable_person_detection else 'OFF'}, pose={'ON' if state.enable_pose_estimation else 'OFF'}")
                 return jsonify({"success": True, "message": "FastAPI started"})
         
         log("FastAPI failed to start in time", "error")
@@ -461,23 +459,53 @@ def set_tracking_backend():
     info = TRACKING_BACKENDS[backend]
     log(f"Tracking backend changed to: {info['name']}", "success")
     
-    # Sync with running FastAPI server so ngrok/remote requests also use this backend
-    if check_fastapi_health():
-        try:
-            import requests as req
-            resp = req.post(
-                f"http://localhost:{FASTAPI_PORT}/api/v1/config/tracking-backend",
-                json={"backend": backend},
-                timeout=3
-            )
-            if resp.status_code == 200:
-                log(f"FastAPI server synced to: {info['name']}")
-            else:
-                log(f"FastAPI sync failed: {resp.text}", "warning")
-        except Exception as e:
-            log(f"Could not sync with FastAPI: {e}", "warning")
+    # Sync with running FastAPI server
+    _sync_model_config_to_fastapi()
     
     return jsonify({"success": True, "backend": backend, "info": info})
+
+@app.route('/api/optional-models', methods=['POST'])
+def set_optional_models():
+    """Toggle optional models (person detection, pose estimation)."""
+    data = request.get_json()
+    
+    changed = []
+    if "person_detection" in data:
+        state.enable_person_detection = bool(data["person_detection"])
+        changed.append(f"person_detection={'ON' if state.enable_person_detection else 'OFF'}")
+    if "pose_estimation" in data:
+        state.enable_pose_estimation = bool(data["pose_estimation"])
+        changed.append(f"pose_estimation={'ON' if state.enable_pose_estimation else 'OFF'}")
+    
+    if changed:
+        log(f"Optional models updated: {', '.join(changed)}", "success")
+    
+    # Sync with FastAPI server
+    _sync_model_config_to_fastapi()
+    
+    return jsonify({
+        "success": True,
+        "person_detection": state.enable_person_detection,
+        "pose_estimation": state.enable_pose_estimation
+    })
+
+def _sync_model_config_to_fastapi():
+    """Sync all model config (backend + optional models) to FastAPI."""
+    if not check_fastapi_health():
+        return
+    try:
+        import requests as req
+        req.post(
+            f"http://localhost:{FASTAPI_PORT}/api/v1/config/models",
+            json={
+                "tracking_backend": state.tracking_backend,
+                "enable_person_detection": state.enable_person_detection,
+                "enable_pose_estimation": state.enable_pose_estimation,
+            },
+            timeout=3
+        )
+    except Exception as e:
+        log(f"Could not sync model config with FastAPI: {e}", "warning")
 
 # ============================================================
 # Routes - Video Processing

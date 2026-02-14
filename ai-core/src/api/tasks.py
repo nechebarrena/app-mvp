@@ -15,23 +15,8 @@ import pandas as pd
 import cv2
 
 from .models import ProcessingStatus
-from .storage import get_storage, StorageManager
+from .storage import get_storage
 
-
-# Pipeline progress mapping (step name -> progress fraction)
-STEP_PROGRESS = {
-    "ingestion": 0.05,
-    "yolo_coco_detection": 0.30,
-    "cutie_disc_tracking": 0.35,
-    "yolo_person_detection": 0.45,
-    "yolo_pose": 0.50,
-    "merged_detections": 0.55,
-    "detection_filter": 0.55,
-    "disc_tracking": 0.70,
-    "track_refiner": 0.80,
-    "metrics_calculator": 0.90,
-    "complete": 1.0
-}
 
 # Default tracking backend (server-side config, can be changed via API)
 DEFAULT_TRACKING_BACKEND = "cutie"
@@ -39,6 +24,8 @@ DEFAULT_TRACKING_BACKEND = "cutie"
 # Server-side runtime config (mutable, set by control panel)
 _server_config = {
     "tracking_backend": DEFAULT_TRACKING_BACKEND,
+    "enable_person_detection": False,
+    "enable_pose_estimation": False,
 }
 
 
@@ -47,40 +34,38 @@ def get_server_tracking_backend() -> str:
     return _server_config.get("tracking_backend", DEFAULT_TRACKING_BACKEND)
 
 
+def get_server_model_config() -> dict:
+    """Get the full server-side model configuration."""
+    return dict(_server_config)
+
+
 def set_server_tracking_backend(backend: str):
     """Set the server-side tracking backend."""
     _server_config["tracking_backend"] = backend
     print(f"[Config] Server tracking backend set to: {backend.upper()}")
 
 
-class PipelineProgressCallback:
-    """Callback to update job progress as pipeline runs."""
-    
-    def __init__(self, storage: StorageManager, video_id: str):
-        self.storage = storage
-        self.video_id = video_id
-    
-    def on_step_start(self, step_name: str):
-        """Called when a pipeline step starts."""
-        progress = STEP_PROGRESS.get(step_name, 0.5)
-        self.storage.update_job(
-            self.video_id,
-            status=ProcessingStatus.PROCESSING,
-            progress=progress,
-            current_step=step_name,
-            message=f"Running {step_name}..."
-        )
-    
-    def on_step_complete(self, step_name: str):
-        """Called when a pipeline step completes."""
-        pass
+def set_server_model_config(config: dict):
+    """Set the full server-side model configuration."""
+    if "tracking_backend" in config:
+        _server_config["tracking_backend"] = config["tracking_backend"]
+    if "enable_person_detection" in config:
+        _server_config["enable_person_detection"] = bool(config["enable_person_detection"])
+    if "enable_pose_estimation" in config:
+        _server_config["enable_pose_estimation"] = bool(config["enable_pose_estimation"])
+    print(f"[Config] Model config updated: backend={_server_config['tracking_backend'].upper()}, "
+          f"person={'ON' if _server_config['enable_person_detection'] else 'OFF'}, "
+          f"pose={'ON' if _server_config['enable_pose_estimation'] else 'OFF'}")
+
 
 
 def create_api_pipeline_config(
     video_path: str,
     output_dir: str,
     selection_data: Optional[Dict[str, Any]] = None,
-    tracking_backend: Optional[str] = None
+    tracking_backend: Optional[str] = None,
+    enable_person_detection: bool = False,
+    enable_pose_estimation: bool = False
 ) -> Dict[str, Any]:
     """
     Create a pipeline configuration for API processing.
@@ -90,6 +75,8 @@ def create_api_pipeline_config(
         output_dir: Directory for pipeline outputs
         selection_data: Optional disc selection {center: [x,y], radius: r}
         tracking_backend: "cutie" or "yolo" (defaults to DEFAULT_TRACKING_BACKEND)
+        enable_person_detection: Include YOLO person segmentation
+        enable_pose_estimation: Include YOLO pose estimation
     
     Returns:
         Pipeline configuration dictionary
@@ -97,163 +84,186 @@ def create_api_pipeline_config(
     backend = tracking_backend or DEFAULT_TRACKING_BACKEND
     
     if backend == "cutie":
-        return _create_cutie_pipeline_config(video_path, output_dir, selection_data)
+        return _create_cutie_pipeline_config(
+            video_path, output_dir, selection_data,
+            enable_person_detection, enable_pose_estimation
+        )
     else:
-        return _create_yolo_pipeline_config(video_path, output_dir, selection_data)
+        return _create_yolo_pipeline_config(
+            video_path, output_dir, selection_data,
+            enable_person_detection, enable_pose_estimation
+        )
 
 
 def _create_cutie_pipeline_config(
     video_path: str,
     output_dir: str,
-    selection_data: Optional[Dict[str, Any]] = None
+    selection_data: Optional[Dict[str, Any]] = None,
+    enable_person_detection: bool = False,
+    enable_pose_estimation: bool = False
 ) -> Dict[str, Any]:
     """
-    Create pipeline config using Cutie for disc tracking + YOLO for person/pose.
+    Create pipeline config using Cutie for disc tracking.
     
-    Flow: ingestion → cutie_disc → yolo_person → yolo_pose → merger → tracker → refiner → metrics
+    Minimal flow (disc only): ingestion → cutie_disc → tracker → refiner → metrics
+    With person: adds yolo_person + merger step
+    With pose: adds yolo_pose step
     """
     video_id_from_path = Path(video_path).parent.name
+    
+    # Determine which classes the tracker handles
+    classes = ["frisbee"]
+    if enable_person_detection:
+        classes.append("person")
+    
+    steps = [
+        # Stage 1: Video Loading
+        {
+            "name": "ingestion",
+            "module": "video_loader",
+            "enabled": True,
+            "input_source": "disk",
+            "save_output": False,
+            "params": {}
+        },
+        # Stage 2: Cutie Disc Tracking (always enabled)
+        {
+            "name": "cutie_disc_tracking",
+            "module": "cutie_tracker",
+            "enabled": True,
+            "input_source": "memory",
+            "input_from_step": "ingestion",
+            "save_output": True,
+            "params": {
+                "weights_path": "models/pretrained/cutie/cutie-base-mega.pth",
+                "max_internal_size": 480,
+                "mem_every": 5,
+                "target_class_name": "frisbee",
+                "min_mask_area": 100,
+                "progress_every": 30
+            }
+        },
+    ]
+    
+    # Determine what feeds into the tracker
+    tracker_input = "cutie_disc_tracking"
+    
+    # Optionally add YOLO person detection + merger
+    if enable_person_detection:
+        steps.append({
+            "name": "yolo_person_detection",
+            "module": "yolo_detector",
+            "enabled": True,
+            "input_source": "memory",
+            "input_from_step": "ingestion",
+            "save_output": False,
+            "params": {
+                "model_path": "models/pretrained/yolov8s-seg.pt",
+                "task": "segment",
+                "conf_threshold": 0.25,
+                "source_name": "yolo_coco",
+                "progress_every": 30
+            }
+        })
+        steps.append({
+            "name": "merged_detections",
+            "module": "detection_merger",
+            "enabled": True,
+            "input_source": "memory",
+            "input_from_step": ["cutie_disc_tracking", "yolo_person_detection"],
+            "save_output": False,
+            "params": {}
+        })
+        tracker_input = "merged_detections"
+    
+    # Optionally add YOLO pose estimation
+    if enable_pose_estimation:
+        steps.append({
+            "name": "yolo_pose",
+            "module": "yolo_detector",
+            "enabled": True,
+            "input_source": "memory",
+            "input_from_step": "ingestion",
+            "save_output": True,
+            "params": {
+                "model_path": "models/pretrained/yolov8n-pose.pt",
+                "task": "pose",
+                "conf_threshold": 0.3,
+                "source_name": "yolo_pose",
+                "progress_every": 30
+            }
+        })
+    
+    # Tracker, refiner, metrics (always)
+    steps.extend([
+        {
+            "name": "disc_tracking",
+            "module": "model_tracker",
+            "enabled": True,
+            "input_source": "memory",
+            "input_from_step": tracker_input,
+            "save_output": False,
+            "params": {
+                "enabled": True,
+                "classes_to_track": classes,
+                "single_object_classes": classes,
+                "min_det_score": 0.05,
+                "high_det_score": 0.15,
+                "max_age_frames": 90,
+                "min_hits_to_confirm": 1,
+                "association": {
+                    "max_center_dist_px": 300,
+                },
+                "progress_every": 30
+            }
+        },
+        {
+            "name": "track_refiner",
+            "module": "track_refiner",
+            "enabled": True,
+            "input_from_step": "disc_tracking",
+            "save_output": False,
+            "params": {
+                "enabled": True,
+                "classes_to_refine": classes,
+                "smoothing": {
+                    "enabled": True,
+                    "method": "moving_average",
+                    "window": 5
+                }
+            }
+        },
+        {
+            "name": "metrics_calculator",
+            "module": "metrics_calculator",
+            "enabled": True,
+            "input_from_step": "track_refiner",
+            "save_output": True,
+            "params": {
+                "target_class": "frisbee",
+                "fallback_classes": ["person"] if enable_person_detection else [],
+                "physical_params": {
+                    "disc_diameter_m": 0.45,
+                    "disc_weight_kg": 20.0,
+                    "bar_weight_kg": 20.0,
+                    "num_discs": 2
+                }
+            }
+        }
+    ])
     
     config = {
         "session": {
             "video_id": video_id_from_path,
             "output_dir": output_dir,
         },
-        "steps": [
-            # Stage 1: Video Loading
-            {
-                "name": "ingestion",
-                "module": "video_loader",
-                "enabled": True,
-                "input_source": "disk",
-                "save_output": False,
-                "params": {}
-            },
-            # Stage 2: Cutie Disc Tracking
-            {
-                "name": "cutie_disc_tracking",
-                "module": "cutie_tracker",
-                "enabled": True,
-                "input_source": "memory",
-                "input_from_step": "ingestion",
-                "save_output": True,
-                "params": {
-                    "weights_path": "models/pretrained/cutie/cutie-base-mega.pth",
-                    "max_internal_size": 480,
-                    "mem_every": 5,
-                    "target_class_name": "frisbee",
-                    "min_mask_area": 100,
-                    "progress_every": 30
-                }
-            },
-            # Stage 3: YOLO Person Detection (segmentation)
-            {
-                "name": "yolo_person_detection",
-                "module": "yolo_detector",
-                "enabled": True,
-                "input_source": "memory",
-                "input_from_step": "ingestion",
-                "save_output": False,
-                "params": {
-                    "model_path": "models/pretrained/yolov8s-seg.pt",
-                    "task": "segment",
-                    "conf_threshold": 0.25,
-                    "source_name": "yolo_coco",
-                    "progress_every": 30
-                }
-            },
-            # Stage 4: YOLO Pose Estimation
-            {
-                "name": "yolo_pose",
-                "module": "yolo_detector",
-                "enabled": True,
-                "input_source": "memory",
-                "input_from_step": "ingestion",
-                "save_output": True,
-                "params": {
-                    "model_path": "models/pretrained/yolov8n-pose.pt",
-                    "task": "pose",
-                    "conf_threshold": 0.3,
-                    "source_name": "yolo_pose",
-                    "progress_every": 30
-                }
-            },
-            # Stage 5: Merge Cutie disc + YOLO person detections
-            {
-                "name": "merged_detections",
-                "module": "detection_merger",
-                "enabled": True,
-                "input_source": "memory",
-                "input_from_step": ["cutie_disc_tracking", "yolo_person_detection"],
-                "save_output": False,
-                "params": {}
-            },
-            # Stage 6: Tracking (assigns track IDs, handles association)
-            # single_object_classes ensures at most 1 disc + 1 person tracked
-            {
-                "name": "disc_tracking",
-                "module": "model_tracker",
-                "enabled": True,
-                "input_source": "memory",
-                "input_from_step": "merged_detections",
-                "save_output": False,
-                "params": {
-                    "enabled": True,
-                    "classes_to_track": ["frisbee", "person"],
-                    "single_object_classes": ["frisbee", "person"],
-                    "min_det_score": 0.05,
-                    "high_det_score": 0.15,
-                    "max_age_frames": 90,
-                    "min_hits_to_confirm": 1,
-                    "association": {
-                        "max_center_dist_px": 300,
-                    },
-                    "progress_every": 30
-                }
-            },
-            # Stage 7: Track Refiner
-            {
-                "name": "track_refiner",
-                "module": "track_refiner",
-                "enabled": True,
-                "input_from_step": "disc_tracking",
-                "save_output": False,
-                "params": {
-                    "enabled": True,
-                    "classes_to_refine": ["frisbee", "person"],
-                    "smoothing": {
-                        "enabled": True,
-                        "method": "moving_average",
-                        "window": 5
-                    }
-                }
-            },
-            # Stage 8: Metrics Calculator
-            {
-                "name": "metrics_calculator",
-                "module": "metrics_calculator",
-                "enabled": True,
-                "input_from_step": "track_refiner",
-                "save_output": True,
-                "params": {
-                    "target_class": "frisbee",
-                    "fallback_classes": ["person"],
-                    "physical_params": {
-                        "disc_diameter_m": 0.45,
-                        "disc_weight_kg": 20.0,
-                        "bar_weight_kg": 20.0,
-                        "num_discs": 2
-                    }
-                }
-            }
-        ]
+        "steps": steps
     }
     
-    # Add disc selection data to cutie_tracker step and model_tracker step
+    # Add disc selection data
     if selection_data:
         for step in config["steps"]:
             if step["name"] == "cutie_disc_tracking":
-                # CutieTracker._get_selection() looks for "initial_selection" key
                 step["params"]["initial_selection"] = {
                     "center": selection_data.get("center"),
                     "radius": selection_data.get("radius")
@@ -271,12 +281,15 @@ def _create_cutie_pipeline_config(
 def _create_yolo_pipeline_config(
     video_path: str,
     output_dir: str,
-    selection_data: Optional[Dict[str, Any]] = None
+    selection_data: Optional[Dict[str, Any]] = None,
+    enable_person_detection: bool = False,
+    enable_pose_estimation: bool = False
 ) -> Dict[str, Any]:
     """
     Create pipeline config using YOLO for all detection + tracking (original flow).
     
-    Flow: ingestion → yolo_detection → detection_filter → tracker → refiner → metrics
+    Note: In YOLO mode, person detection is inherent (COCO detects all classes).
+    The enable_person_detection flag controls whether person tracks are kept.
     """
     video_id_from_path = Path(video_path).parent.name
     
@@ -471,39 +484,56 @@ def build_api_results(
                             "trajectory": []
                         }
                     
-                    # Extract bbox
+                    # Extract detection data
                     det = obj.detection if hasattr(obj, 'detection') else obj
-                    bbox = det.bbox if hasattr(det, 'bbox') else [0, 0, 0, 0]
+                    confidence = float(det.confidence) if hasattr(det, 'confidence') else 0.5
                     
-                    track_dict[tid]["frames"][str(frame_idx)] = {
-                        "bbox": {
+                    frame_data: Dict[str, Any] = {
+                        "confidence": confidence,
+                        "bbox": None,
+                        "mask": None
+                    }
+                    
+                    # Add bbox if available
+                    bbox = det.bbox if hasattr(det, 'bbox') else None
+                    if bbox is not None and len(bbox) == 4:
+                        frame_data["bbox"] = {
                             "x1": float(bbox[0]),
                             "y1": float(bbox[1]),
                             "x2": float(bbox[2]),
                             "y2": float(bbox[3])
-                        },
-                        "confidence": float(det.confidence) if hasattr(det, 'confidence') else 0.5
-                    }
+                        }
                     
                     # Add mask if available (as polygon points)
                     if hasattr(det, 'mask') and det.mask is not None:
                         mask_data = det.mask
                         if hasattr(mask_data, 'tolist'):
                             mask_data = mask_data.tolist()
-                        track_dict[tid]["frames"][str(frame_idx)]["mask"] = mask_data
+                        frame_data["mask"] = mask_data
                     
-                    # NOTE: obj.history only contains the last N points (truncated tail)
-                    # so we build the full trajectory below from bbox centers instead.
+                    track_dict[tid]["frames"][str(frame_idx)] = frame_data
         
-        # Build complete trajectory from bbox centers for each track
+        # Build trajectory from mask centroids (preferred) or bbox centers
         for tid, track_data in track_dict.items():
             sorted_frame_indices = sorted(track_data["frames"].keys(), key=lambda k: int(k))
             track_data["trajectory"] = []
             for fidx in sorted_frame_indices:
-                bbox = track_data["frames"][fidx]["bbox"]
-                cx = (bbox["x1"] + bbox["x2"]) / 2.0
-                cy = (bbox["y1"] + bbox["y2"]) / 2.0
-                track_data["trajectory"].append([cx, cy])
+                fdata = track_data["frames"][fidx]
+                cx, cy = None, None
+                
+                # Prefer mask centroid for trajectory
+                if fdata.get("mask") and isinstance(fdata["mask"], list) and len(fdata["mask"]) > 0:
+                    import numpy as np
+                    pts = np.array(fdata["mask"])
+                    cx = float(pts[:, 0].mean())
+                    cy = float(pts[:, 1].mean())
+                elif fdata.get("bbox"):
+                    bbox = fdata["bbox"]
+                    cx = (bbox["x1"] + bbox["x2"]) / 2.0
+                    cy = (bbox["y1"] + bbox["y2"]) / 2.0
+                
+                if cx is not None and cy is not None:
+                    track_data["trajectory"].append([cx, cy])
         
         tracks = list(track_dict.values())
     
@@ -626,14 +656,19 @@ async def process_video_task(video_id: str):
         from pipeline.runner import PipelineRunner
         from pipeline.config import PipelineConfig
         
-        # Get selection data and tracking backend from job
+        # Get selection data and model config from job + server config
         selection_data = job.selection_data
         # Priority: job-specific > server config > hardcoded default
         tracking_backend = job.tracking_backend or get_server_tracking_backend()
+        model_config = get_server_model_config()
+        enable_person = model_config.get("enable_person_detection", False)
+        enable_pose = model_config.get("enable_pose_estimation", False)
         
         if selection_data:
             print(f"[Task] Using disc selection: center={selection_data['center']}, radius={selection_data['radius']}")
-        print(f"[Task] *** Tracking backend: {tracking_backend.upper()} ***")
+        print(f"[Task] *** Tracking backend: {tracking_backend.upper()} | "
+              f"Person: {'ON' if enable_person else 'OFF'} | "
+              f"Pose: {'ON' if enable_pose else 'OFF'} ***")
         
         # Store the actual backend used in the job (so UI shows correct info)
         storage.update_job(video_id, tracking_backend=tracking_backend)
@@ -643,7 +678,9 @@ async def process_video_task(video_id: str):
             video_path=video_path,
             output_dir=str(results_dir),
             selection_data=selection_data,
-            tracking_backend=tracking_backend
+            tracking_backend=tracking_backend,
+            enable_person_detection=enable_person,
+            enable_pose_estimation=enable_pose
         )
         
         # Write config to YAML file

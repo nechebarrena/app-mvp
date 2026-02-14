@@ -1,8 +1,10 @@
-# FastAPI Backend Guide
+# API Guide — Server ↔ Mobile App Contract
 
-## Overview
+> **Version:** 2.0.0
+> **Last Updated:** February 13, 2026
+> **Status:** MVP Phase 1 — Remote Processing with Cutie VOS
 
-The FastAPI backend provides REST endpoints for video analysis, designed for mobile app integration.
+---
 
 ## Architecture
 
@@ -23,31 +25,47 @@ The FastAPI backend provides REST endpoints for video analysis, designed for mob
 └─────────────────┘                    └─────────────────────────────────┘
 ```
 
+## Workflow
+
+| Step | Method | Endpoint | Description |
+|------|--------|----------|-------------|
+| 1 | `POST` | `/api/v1/videos/upload` | Upload video + disc selection |
+| 2 | `GET` | `/api/v1/videos/{video_id}/status` | Poll processing progress |
+| 3 | `GET` | `/api/v1/videos/{video_id}/results` | Retrieve analysis results |
+| 4 | `DELETE` | `/api/v1/videos/{video_id}` | Delete video and results (optional) |
+
+---
+
 ## Endpoints
 
-### Upload Video
+### 1. Upload Video
+
 ```http
 POST /api/v1/videos/upload
 Content-Type: multipart/form-data
-
-file: <video_file>
-disc_center_x: <optional float>  # X coordinate of disc center in first frame (pixels)
-disc_center_y: <optional float>  # Y coordinate of disc center in first frame (pixels)
-disc_radius: <optional float>    # Disc radius in first frame (pixels)
 ```
 
-**Note:** The disc selection parameters are highly recommended for better tracking accuracy. They enable single-object tracking heuristics that significantly improve disc detection, especially in the early frames of the video.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | binary | **Yes** | Video file (MP4, MOV, AVI, MKV, WebM). Max 100MB |
+| `disc_center_x` | float | **Yes*** | Disc center X in first frame (pixels) |
+| `disc_center_y` | float | **Yes*** | Disc center Y in first frame (pixels) |
+| `disc_radius` | float | **Yes*** | Disc radius in first frame (pixels) |
+| `tracking_backend` | string | No | `"cutie"` or `"yolo"` (uses server default if omitted) |
+
+*\*Required when server uses Cutie backend (recommended default).*
 
 **Response:**
 ```json
 {
-    "video_id": "abc123def456",
+    "video_id": "abc123def45",
     "status": "pending",
-    "message": "Video uploaded successfully. Processing will start shortly. Disc selection: center=(587, 623), radius=74"
+    "message": "Video uploaded successfully. Processing will start shortly."
 }
 ```
 
-### Check Status
+### 2. Check Status
+
 ```http
 GET /api/v1/videos/{video_id}/status
 ```
@@ -55,17 +73,16 @@ GET /api/v1/videos/{video_id}/status
 **Response:**
 ```json
 {
-    "video_id": "abc123def456",
+    "video_id": "abc123def45",
     "status": "processing",
     "progress": 0.45,
-    "current_step": "yolo_detection",
-    "message": "Running yolo_detection...",
-    "created_at": "2026-01-29T10:00:00",
-    "updated_at": "2026-01-29T10:01:30"
+    "current_step": "cutie_disc_tracking",
+    "message": "Running cutie_disc_tracking (2/5)...",
+    "created_at": "2026-02-13T21:38:26",
+    "updated_at": "2026-02-13T21:38:50"
 }
 ```
 
-**Status Values:**
 | Status | Description |
 |--------|-------------|
 | `pending` | Waiting in queue |
@@ -73,255 +90,237 @@ GET /api/v1/videos/{video_id}/status
 | `completed` | Ready to retrieve results |
 | `failed` | An error occurred |
 
-### Get Results
+**Polling:** Check every 2–5 seconds while `pending` or `processing`.
+
+### 3. Get Results
+
 ```http
 GET /api/v1/videos/{video_id}/results
 ```
 
-**Response (when completed):**
+This is the **main contract**. The response structure below defines what the mobile app must parse.
+
+---
+
+## Results JSON Contract
+
+### Guaranteed fields (always present)
+
 ```json
 {
-    "video_id": "abc123def456",
+    "video_id": "abc123def45",
     "status": "completed",
-    "metadata": {
-        "fps": 30.0,
-        "width": 1080,
-        "height": 1920,
-        "duration_s": 3.67,
-        "total_frames": 110
-    },
-    "tracks": [
-        {
-            "track_id": 1,
-            "class_name": "disco",
-            "frames": {
-                "0": {
-                    "bbox": {"x1": 100, "y1": 200, "x2": 150, "y2": 250},
-                    "mask": [[100,200], [110,205], ...],
-                    "confidence": 0.92
-                },
-                ...
+    "processed_at": "2026-02-13T22:19:01",
+
+    "metadata": { ... },
+    "tracks": [ ... ],
+    "metrics": { ... },
+    "summary": { ... }
+}
+```
+
+### `metadata` (required)
+
+Video properties for synchronizing overlays with playback.
+
+```json
+{
+    "fps": 30.0,
+    "width": 1920,
+    "height": 1080,
+    "duration_s": 25.87,
+    "total_frames": 776
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fps` | float | Frames per second |
+| `width` | int | Video width in pixels |
+| `height` | int | Video height in pixels |
+| `duration_s` | float | Duration in seconds |
+| `total_frames` | int | Total frame count |
+
+### `tracks` (required — at least the disc track)
+
+Array of tracked objects. **The disc track is always present.** Person track is optional.
+
+```json
+[
+    {
+        "track_id": 1,
+        "class_name": "frisbee",
+        "trajectory": [[cx, cy], [cx, cy], ...],
+        "frames": {
+            "0": {
+                "mask": [[x,y], [x,y], ...],
+                "confidence": 0.99,
+                "bbox": null
             },
-            "trajectory": [[125, 225], [127, 223], ...]
+            "1": { ... },
+            ...
         }
-    ],
-    "metrics": {
-        "frames": [0, 1, 2, ...],
-        "time_s": [0.0, 0.033, 0.067, ...],
-        "height_m": [0.5, 0.52, 0.55, ...],
-        "speed_m_s": [0.0, 0.6, 1.2, ...],
-        "power_w": [0, 150, 320, ...],
-        ...
-    },
-    "summary": {
-        "peak_speed_m_s": 4.02,
-        "peak_power_w": 3827,
-        "max_height_m": 1.47,
-        "min_height_m": 0.3,
-        "lift_duration_s": 2.1,
-        "total_frames": 110
-    },
-    "processed_at": "2026-01-29T10:02:00"
-}
+    }
+]
 ```
 
-### Delete Video
-```http
-DELETE /api/v1/videos/{video_id}
-```
+#### Track fields
 
-**Response:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `track_id` | int | Unique track identifier |
+| `class_name` | string | `"frisbee"` = disc **(required)**, `"person"` = athlete (optional) |
+| `trajectory` | `[[x,y], ...]` | Center points in pixels, one per detected frame |
+| `frames` | `{frame_idx: detection}` | Per-frame detection data (keys are string frame indices) |
+
+#### Frame detection fields
+
+| Field | Type | Disc | Person | Description |
+|-------|------|------|--------|-------------|
+| `mask` | `[[x,y], ...]` or `null` | **Required** | Optional | Polygon contour points in pixels |
+| `confidence` | float | **Required** | **Required** | Detection confidence 0.0–1.0 |
+| `bbox` | `{x1,y1,x2,y2}` or `null` | Optional | Optional | Bounding box in pixels |
+
+#### Class name mapping
+
+| `class_name` value | Semantic meaning | Notes |
+|---------------------|-----------------|-------|
+| `"frisbee"` | Weightlifting disc | COCO legacy name. Always present. |
+| `"person"` | Athlete | Only present if person detection is enabled server-side |
+
+### `metrics` (required)
+
+Time series for the disc. All arrays have the same length and are aligned by index.
+
 ```json
 {
-    "video_id": "abc123def456",
-    "deleted": true,
-    "message": "Video and all associated data have been deleted."
+    "frames":             [0, 1, 2, ...],
+    "time_s":             [0.0, 0.033, 0.067, ...],
+    "x_m":                [0.5, 0.51, ...],
+    "y_m":                [1.2, 1.19, ...],
+    "height_m":           [0.0, 0.02, ...],
+    "vx_m_s":             [0.1, 0.12, ...],
+    "vy_m_s":             [0.5, 0.6, ...],
+    "speed_m_s":          [0.51, 0.61, ...],
+    "accel_m_s2":         [0.0, 2.5, ...],
+    "kinetic_energy_j":   [2.6, 3.7, ...],
+    "potential_energy_j":  [0.0, 3.9, ...],
+    "total_energy_j":     [2.6, 7.6, ...],
+    "power_w":            [0.0, 150, ...]
 }
 ```
 
-### List All Videos
-```http
-GET /api/v1/videos
-```
+| Series | Unit | Description |
+|--------|------|-------------|
+| `frames` | index | Frame number (integer) |
+| `time_s` | seconds | Timestamp |
+| `x_m` | meters | Horizontal position |
+| `y_m` | meters | Vertical position |
+| `height_m` | meters | Height above lowest point |
+| `vx_m_s` | m/s | Horizontal velocity |
+| `vy_m_s` | m/s | Vertical velocity |
+| `speed_m_s` | m/s | Total speed (magnitude) |
+| `accel_m_s2` | m/s² | Total acceleration |
+| `kinetic_energy_j` | Joules | Kinetic energy |
+| `potential_energy_j` | Joules | Gravitational potential energy |
+| `total_energy_j` | Joules | Total mechanical energy |
+| `power_w` | Watts | Instantaneous power |
 
-**Response:**
+### `summary` (required)
+
+Peak values for quick display.
+
 ```json
 {
-    "count": 3,
-    "videos": [
-        {"video_id": "abc123", "status": "completed", "progress": 1.0, ...},
-        {"video_id": "def456", "status": "processing", "progress": 0.45, ...},
-        ...
-    ]
+    "peak_speed_m_s": 4.02,
+    "peak_power_w": 3827.0,
+    "max_height_m": 1.47,
+    "min_height_m": 0.30,
+    "lift_duration_s": 2.1,
+    "total_frames": 110
 }
 ```
+
+---
+
+## What the mobile app MUST handle
+
+1. **`metadata`** — to sync video playback with frame indices (`fps`, resolution)
+2. **Disc track** (`class_name == "frisbee"`) — always present:
+   - `mask` per frame → draw disc contour overlay on video
+   - `trajectory` → draw the full motion path
+   - `confidence` per frame → optionally show detection quality
+3. **`metrics`** — all 13 series for graphs/charts
+4. **`summary`** — peak values for results screen
+
+## What the mobile app SHOULD handle gracefully
+
+- **Person track** (`class_name == "person"`) — may or may not be present
+- **`bbox`** in any frame detection — may be `null`
+- **Additional tracks** — ignore any `class_name` not recognized
+- **Empty metrics** — if pipeline fails to compute metrics, arrays may be empty
+
+## What is NOT in the contract (currently)
+
+- **Pose keypoints** — server can run pose estimation but keypoints are not included in results
+- **Physical calibration parameters** — disc diameter, weight are server-side only
+- **Raw detection scores per model** — only final confidence is exposed
+
+---
+
+## Server Configuration Endpoints
+
+These are used by the Control Panel, not by the mobile app.
+
+```http
+GET  /api/v1/config/models         # Current model config
+POST /api/v1/config/models         # Set model config
+GET  /api/v1/config/tracking-backend
+POST /api/v1/config/tracking-backend
+```
+
+---
 
 ## Running the Server
 
-### Development (with auto-reload)
+### Via Control Panel (recommended)
 ```bash
 cd ai-core
-PYTHONPATH=src:. uv run python run_api.py --reload
+PYTHONPATH=vendors/cutie:src:. uv run python control_panel.py
 ```
 
-### Production
+### Direct
 ```bash
 cd ai-core
-PYTHONPATH=src:. uv run python run_api.py --host 0.0.0.0 --port 8000
+PYTHONPATH=vendors/cutie:src:. uv run python run_api.py
 ```
 
-### Using uvicorn directly
-```bash
-cd ai-core
-PYTHONPATH=src:. uv run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Interactive Documentation
-
-Once the server is running:
-
+### Interactive Documentation
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
-- **OpenAPI JSON**: http://localhost:8000/openapi.json
 
-## Storage
-
-### Directory Structure
-```
-data/
-├── api/
-│   ├── uploads/         # Uploaded videos
-│   │   ├── abc123/
-│   │   │   └── input.mp4
-│   │   └── def456/
-│   │       └── input.mp4
-│   └── results/         # Processing results
-│       ├── jobs.json    # Job state persistence
-│       ├── abc123/
-│       │   └── results.json
-│       └── def456/
-│           └── results.json
-```
-
-### Cleanup
-Jobs and files persist until explicitly deleted. For automatic cleanup:
-```python
-from api.storage import get_storage
-storage = get_storage()
-storage.cleanup_old_jobs(max_age_hours=24)  # Delete jobs older than 24h
-```
+---
 
 ## Error Handling
 
-All errors return JSON with this structure:
 ```json
-{
-    "detail": "Error message here"
-}
+{"detail": "Error message here"}
 ```
 
 | Status Code | Meaning |
 |-------------|---------|
-| 400 | Bad request (invalid file type, etc.) |
+| 400 | Bad request (invalid file type) |
 | 404 | Video not found |
 | 413 | File too large (>100MB) |
-| 500 | Server error / Processing failed |
+| 500 | Processing failed |
 
-## Configuration
+---
 
-### Limits
+## Limits
+
 | Setting | Value |
 |---------|-------|
 | Max file size | 100MB |
 | Allowed formats | MP4, MOV, AVI, MKV, WebM |
-| Recommended resolution | 720p - 1080p |
-
-### CORS
-By default, CORS allows all origins (for development). In production, restrict to your mobile app's origin.
-
-## Mobile App Integration
-
-### Typical Flow
-```python
-import requests
-import time
-
-BASE_URL = "http://192.168.1.100:8000"  # Server IP
-
-# 1. Upload video
-with open("video.mp4", "rb") as f:
-    response = requests.post(
-        f"{BASE_URL}/api/v1/videos/upload",
-        files={"file": f}
-    )
-video_id = response.json()["video_id"]
-
-# 2. Poll for completion
-while True:
-    status = requests.get(f"{BASE_URL}/api/v1/videos/{video_id}/status").json()
-    print(f"Progress: {status['progress']*100:.0f}%")
-    
-    if status["status"] == "completed":
-        break
-    elif status["status"] == "failed":
-        raise Exception(status["message"])
-    
-    time.sleep(2)
-
-# 3. Get results
-results = requests.get(f"{BASE_URL}/api/v1/videos/{video_id}/results").json()
-
-# 4. Render overlays locally using results["tracks"]
-# ...
-
-# 5. Optionally delete
-requests.delete(f"{BASE_URL}/api/v1/videos/{video_id}")
-```
-
-### Rendering on Mobile
-The `tracks` array contains all information needed to render overlays:
-- `bbox`: Bounding box coordinates per frame (x1, y1, x2, y2 in pixels)
-- `mask`: Polygon points for segmentation (if available, `[[x,y], ...]`)
-- `trajectory`: **Complete** center points for drawing motion path (`[[x, y], ...]`)
-- `confidence`: Detection confidence per frame (0.0-1.0)
-
-**Trajectory construction:** Trajectories are built from the bbox centers of **every frame** where the object was detected, sorted chronologically. This ensures the full motion path is available (not just a truncated tail from the tracker's internal buffer).
-
-**Available overlay data per track:**
-| Data | Available | Source |
-|------|-----------|--------|
-| Bounding box (person) | ✅ Yes | `frames[frame_idx].bbox` |
-| Bounding box (disc) | ✅ Yes | `frames[frame_idx].bbox` |
-| Segmentation mask (disc) | ✅ Yes* | `frames[frame_idx].mask` |
-| Full trajectory path | ✅ Yes | `trajectory` |
-| Pose keypoints (skeleton) | ❌ No | Not in API pipeline |
-
-*\*Masks are available when the YOLO model runs in segmentation mode (default).*
-
-> **Note:** The API pipeline currently does NOT run pose estimation (YOLO Pose). To add athlete skeleton overlay, the `yolo_pose` step would need to be added to the API pipeline and a `keypoints` field to the response model.
-
-The mobile app should:
-1. Load the original video (already on device)
-2. For each frame, lookup detections in `tracks[].frames[frame_idx]`
-3. Draw bounding boxes, masks, and trajectories
-4. Optionally show metrics from `metrics` series
-5. Use `metadata.fps` to synchronize frame indices with video playback time
-
-## Health Check
-```http
-GET /health
-```
-
-Returns server health and job statistics:
-```json
-{
-    "status": "healthy",
-    "jobs": {
-        "total": 10,
-        "pending": 1,
-        "processing": 2,
-        "completed": 6,
-        "failed": 1
-    }
-}
-```
+| Recommended resolution | 720p – 1080p |
+| Max concurrent processing | 1 (MVP single-user) |

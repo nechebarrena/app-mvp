@@ -1,8 +1,8 @@
 # Mobile App Specification
 
-> **Version:** 1.0.0  
-> **Last Updated:** January 31, 2026  
-> **Status:** MVP Phase 1 - Remote Processing  
+> **Version:** 2.0.0  
+> **Last Updated:** February 13, 2026  
+> **Status:** MVP Phase 1 — Remote Processing with Cutie VOS  
 > **Target Platforms:** Android (primary), iOS (secondary)
 
 ---
@@ -405,14 +405,16 @@ class KtorLiftingApiClient(
 
 ## 6. API Contract
 
+> **Full contract details:** See [`docs/api_guide.md`](./api_guide.md)
+
 ### 6.1 Base URL
 
 ```
+# Remote access (Ngrok) — primary for MVP
+https://{random-id}.ngrok-free.app
+
 # Development (local network)
 http://192.168.x.x:8000
-
-# Remote access (Ngrok)
-https://{random-id}.ngrok-free.app
 ```
 
 ### 6.2 Required Headers
@@ -432,14 +434,18 @@ POST /api/v1/videos/upload
 Content-Type: multipart/form-data
 
 Form Fields:
-- file: Video file (required)
-- disc_center_x: Float (optional, pixels)
-- disc_center_y: Float (optional, pixels)  
-- disc_radius: Float (optional, pixels)
+- file: Video file (required, max 100MB)
+- disc_center_x: Float (required* — pixels, disc center X in first frame)
+- disc_center_y: Float (required* — pixels, disc center Y in first frame)
+- disc_radius: Float (required* — pixels, disc radius in first frame)
 
-Response 200:
+*Required when server uses Cutie backend (recommended default).
+```
+
+**Response 200:**
+```json
 {
-  "video_id": "abc123def",
+  "video_id": "abc123def45",
   "status": "pending",
   "message": "Video uploaded successfully..."
 }
@@ -449,87 +455,102 @@ Response 200:
 
 ```http
 GET /api/v1/videos/{video_id}/status
+```
 
-Response 200:
+**Response 200:**
+```json
 {
-  "video_id": "abc123def",
-  "status": "processing",  // pending | processing | completed | failed
+  "video_id": "abc123def45",
+  "status": "processing",
   "progress": 0.45,
-  "current_step": "yolo_detection",
-  "message": "Detecting objects...",
-  "created_at": "2026-01-31T12:00:00",
-  "updated_at": "2026-01-31T12:00:15"
+  "current_step": "cutie_disc_tracking",
+  "message": "Running cutie_disc_tracking (2/5)...",
+  "created_at": "2026-02-13T21:38:26",
+  "updated_at": "2026-02-13T21:38:50"
 }
 ```
+
+Status values: `pending` | `processing` | `completed` | `failed`
 
 #### Get Results
 
 ```http
 GET /api/v1/videos/{video_id}/results
+```
 
-Response 200:
+**Response 200 — Guaranteed structure:**
+```json
 {
-  "video_id": "abc123def",
+  "video_id": "abc123def45",
   "status": "completed",
+  "processed_at": "2026-02-13T22:19:01",
   "metadata": {
-    "fps": 29.97,
-    "width": 1080,
-    "height": 1920,
-    "duration_s": 4.5,
-    "total_frames": 135
+    "fps": 30.0,
+    "width": 1920,
+    "height": 1080,
+    "duration_s": 25.87,
+    "total_frames": 776
   },
   "tracks": [
     {
       "track_id": 1,
-      "class_name": "frisbee",  // disc
+      "class_name": "frisbee",
+      "trajectory": [[cx, cy], ...],
       "frames": {
-        "0": {"bbox": {"x1": 100, "y1": 200, "x2": 180, "y2": 280}, "confidence": 0.95},
-        "1": {...},
-        ...
-      },
-      "trajectory": [[140, 240], [142, 238], ...]
-    },
-    {
-      "track_id": 2,
-      "class_name": "person",
-      ...
+        "0": {
+          "mask": [[x,y], [x,y], ...],
+          "confidence": 0.99,
+          "bbox": null
+        }
+      }
     }
   ],
   "metrics": {
     "frames": [0, 1, 2, ...],
-    "time_s": [0.0, 0.033, 0.067, ...],
-    "height_m": [0.5, 0.52, 0.55, ...],
-    "speed_m_s": [0.0, 0.8, 1.2, ...],
-    "power_w": [0, 150, 320, ...]
+    "time_s": [0.0, 0.033, ...],
+    "x_m": [...], "y_m": [...],
+    "height_m": [...],
+    "vx_m_s": [...], "vy_m_s": [...],
+    "speed_m_s": [...],
+    "accel_m_s2": [...],
+    "kinetic_energy_j": [...],
+    "potential_energy_j": [...],
+    "total_energy_j": [...],
+    "power_w": [...]
   },
   "summary": {
-    "peak_speed_m_s": 2.45,
-    "peak_power_w": 1850,
-    "max_height_m": 0.82,
-    "min_height_m": -0.15
+    "peak_speed_m_s": 4.02,
+    "peak_power_w": 3827,
+    "max_height_m": 1.47,
+    "min_height_m": 0.30,
+    "lift_duration_s": 2.1,
+    "total_frames": 110
   }
 }
 ```
 
-#### Delete Video
+### 6.4 Results Contract Rules
 
-```http
-DELETE /api/v1/videos/{video_id}
+**Always guaranteed:**
+- `metadata` — video properties
+- At least one track with `class_name == "frisbee"` (the disc) containing `mask` + `trajectory`
+- `metrics` — 13 time series for the disc
+- `summary` — peak values
 
-Response 200:
-{
-  "video_id": "abc123def",
-  "deleted": true,
-  "message": "Video and all associated data have been deleted."
-}
-```
+**Optional (may or may not be present):**
+- Track with `class_name == "person"` (only if person detection enabled server-side)
+- `bbox` in frame detections (may be `null`)
 
-### 6.4 Error Responses
+**Class name mapping:**
+| `class_name` | Meaning | Display name |
+|--------------|---------|-------------|
+| `"frisbee"` | Weightlifting disc | "Disco" |
+| `"person"` | Athlete | "Atleta" |
+
+### 6.5 Error Responses
 
 ```json
-{
-  "detail": "Error description here"
-}
+{"detail": "Error description here"}
 ```
 
 Status codes: 400, 404, 413, 500
@@ -640,16 +661,16 @@ data class DiscSelection(
 @Serializable
 data class Track(
     val trackId: Int,
-    val className: String,
+    @SerialName("class_name") val className: String,  // "frisbee" = disc (required), "person" = athlete (optional)
     val frames: Map<Int, FrameDetection>,
-    val trajectory: List<List<Float>>
+    val trajectory: List<List<Float>>  // [[cx, cy], ...] center points in pixels
 )
 
 @Serializable
 data class FrameDetection(
-    val bbox: BoundingBox,
-    val confidence: Float,
-    val mask: List<List<Float>>? = null
+    val bbox: BoundingBox? = null,       // Optional — may be null for disc tracks
+    val mask: List<List<Float>>? = null, // Required for disc — polygon contour [[x,y], ...]
+    val confidence: Float
 )
 
 @Serializable
@@ -660,13 +681,21 @@ data class BoundingBox(
     val y2: Float
 )
 
-// Metrics.kt
+// Metrics.kt — all 13 series for the disc
 @Serializable
 data class MetricsSeries(
     val frames: List<Int>,
     @SerialName("time_s") val timeS: List<Float>,
+    @SerialName("x_m") val xM: List<Float>,
+    @SerialName("y_m") val yM: List<Float>,
     @SerialName("height_m") val heightM: List<Float>,
+    @SerialName("vx_m_s") val vxMS: List<Float>,
+    @SerialName("vy_m_s") val vyMS: List<Float>,
     @SerialName("speed_m_s") val speedMS: List<Float>,
+    @SerialName("accel_m_s2") val accelMS2: List<Float>,
+    @SerialName("kinetic_energy_j") val kineticEnergyJ: List<Float>,
+    @SerialName("potential_energy_j") val potentialEnergyJ: List<Float>,
+    @SerialName("total_energy_j") val totalEnergyJ: List<Float>,
     @SerialName("power_w") val powerW: List<Float>
 )
 
@@ -675,18 +704,21 @@ data class MetricsSummary(
     @SerialName("peak_speed_m_s") val peakSpeedMS: Float,
     @SerialName("peak_power_w") val peakPowerW: Float,
     @SerialName("max_height_m") val maxHeightM: Float,
-    @SerialName("min_height_m") val minHeightM: Float
+    @SerialName("min_height_m") val minHeightM: Float,
+    @SerialName("lift_duration_s") val liftDurationS: Float,
+    @SerialName("total_frames") val totalFrames: Int
 )
 
 // AnalysisResult.kt
 @Serializable
 data class AnalysisResult(
-    val videoId: String,
+    @SerialName("video_id") val videoId: String,
     val status: String,
     val metadata: VideoMetadata,
-    val tracks: List<Track>,
-    val metrics: MetricsSeries,
-    val summary: MetricsSummary
+    val tracks: List<Track>,      // Always has at least one disc track (class_name="frisbee")
+    val metrics: MetricsSeries,   // Disc time series
+    val summary: MetricsSummary,
+    @SerialName("processed_at") val processedAt: String
 )
 
 @Serializable
@@ -698,6 +730,12 @@ data class VideoMetadata(
     @SerialName("total_frames") val totalFrames: Int
 )
 ```
+
+**Important notes for the mobile app:**
+- The disc track (`class_name == "frisbee"`) is **always** present. The app must parse it.
+- The person track (`class_name == "person"`) is **optional**. The app should handle its absence gracefully.
+- `bbox` in `FrameDetection` may be `null` — the app should use `mask` centroid for disc positioning.
+- All `metrics` series have the same length and are aligned by index.
 
 ---
 
