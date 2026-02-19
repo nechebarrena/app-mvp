@@ -642,13 +642,15 @@ async def process_video_task(video_id: str):
         print(f"[Task] Job not found: {video_id}")
         return
     
+    started_at = datetime.now()
     try:
-        # Update status to processing
+        # Record when processing actually started
         storage.update_job(
             video_id,
             status=ProcessingStatus.PROCESSING,
             progress=0.0,
-            message="Starting analysis..."
+            message="Starting analysis...",
+            started_at=started_at,
         )
         
         video_path = job.video_path
@@ -820,7 +822,43 @@ async def process_video_task(video_id: str):
         
         # Save results
         results_path = storage.save_results(video_id, results)
-        
+
+        finished_at = datetime.now()
+
+        # Reload job to get final trazabilidad fields
+        job = storage.get_job(video_id)
+
+        # Build and persist job_meta.json
+        job_meta = {
+            "job_id": video_id,
+            "schema_version": "1.0",
+            "timestamps": {
+                "created_at": job.created_at.isoformat() if job else None,
+                "started_at": started_at.isoformat(),
+                "finished_at": finished_at.isoformat(),
+                "duration_s": round((finished_at - started_at).total_seconds(), 2),
+            },
+            "source": {
+                "type": job.source_type if job else "upload",
+                "original_filename": job.original_filename if job else None,
+                "asset_id": job.asset_id if job else None,
+            },
+            "benchmark": {
+                "case_id": job.case_id if job else None,
+                "client_run_id": job.client_run_id if job else None,
+                "tags": job.tags if job else None,
+            },
+            "model_config": {
+                "tracking_backend": tracking_backend,
+                "enable_person_detection": enable_person,
+                "enable_pose_estimation": enable_pose,
+            },
+            "video_metadata": video_metadata,
+            "status": "completed",
+            "results_contract_version": "2.0.0",
+        }
+        storage.save_job_meta(video_id, job_meta)
+
         # Update job as completed
         storage.update_job(
             video_id,
@@ -828,7 +866,8 @@ async def process_video_task(video_id: str):
             progress=1.0,
             current_step=None,
             message="Analysis complete",
-            results_path=str(results_path)
+            results_path=str(results_path),
+            finished_at=finished_at,
         )
         
         print(f"[Task] Completed processing: {video_id}")
@@ -836,15 +875,46 @@ async def process_video_task(video_id: str):
     except Exception as e:
         error_msg = str(e)
         traceback_str = traceback.format_exc()
+        finished_at = datetime.now()
         print(f"[Task] Error processing {video_id}: {error_msg}")
         print(traceback_str)
-        
+
+        # Write failed job_meta too so the runner always has a trace file
+        try:
+            job = storage.get_job(video_id)
+            job_meta = {
+                "job_id": video_id,
+                "schema_version": "1.0",
+                "timestamps": {
+                    "created_at": job.created_at.isoformat() if job else None,
+                    "started_at": started_at.isoformat(),
+                    "finished_at": finished_at.isoformat(),
+                    "duration_s": round((finished_at - started_at).total_seconds(), 2),
+                },
+                "source": {
+                    "type": job.source_type if job else "upload",
+                    "original_filename": job.original_filename if job else None,
+                    "asset_id": job.asset_id if job else None,
+                },
+                "benchmark": {
+                    "case_id": job.case_id if job else None,
+                    "client_run_id": job.client_run_id if job else None,
+                    "tags": job.tags if job else None,
+                },
+                "status": "failed",
+                "error": error_msg,
+            }
+            storage.save_job_meta(video_id, job_meta)
+        except Exception:
+            pass  # best-effort
+
         storage.update_job(
             video_id,
             status=ProcessingStatus.FAILED,
             progress=0.0,
             message=f"Processing failed: {error_msg}",
-            error=traceback_str
+            error=traceback_str,
+            finished_at=finished_at,
         )
 
 

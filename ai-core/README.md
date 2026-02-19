@@ -80,6 +80,37 @@ See [`docs/api_guide.md`](../docs/api_guide.md) for the full specification.
 | `model_tracker` | Kalman + Hungarian object tracker |
 | `metrics_calculator` | Physics metrics (velocity, energy, power) |
 
+## Benchmark / Testing
+
+Three extra endpoints support external benchmark tooling (no mobile impact):
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/info` | Capabilities handshake (versions, backends, limits) |
+| `POST /api/v1/bench/run_one` | Submit one case — upload or local asset |
+| `GET /api/v1/assets` | List videos in `DATASETS_ROOT` |
+
+**Local asset setup:**
+```bash
+mkdir -p data/bench_assets
+cp your_video.mp4 data/bench_assets/snatch_001.mp4
+# or set a custom root:
+export DATASETS_ROOT=/path/to/videos
+```
+
+See [`docs/BENCHMARK_API.md`](../docs/BENCHMARK_API.md) for full reference and curl examples.
+
+## Per-job artefacts
+
+Every processed job writes to `data/api/results/<job_id>/`:
+
+```
+result.json          — ResultsContract v2.0.0
+job_meta.json        — timestamps, backend, case_id, tags, video metadata
+pipeline.log         — full per-step trace
+pipeline_config.yaml — resolved pipeline YAML
+```
+
 ## Setup
 
 ```bash

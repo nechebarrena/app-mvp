@@ -324,3 +324,44 @@ PYTHONPATH=vendors/cutie:src:. uv run python run_api.py
 | Allowed formats | MP4, MOV, AVI, MKV, WebM |
 | Recommended resolution | 720p – 1080p |
 | Max concurrent processing | 1 (MVP single-user) |
+
+---
+
+## Benchmark & Testing Endpoints
+
+Three additional endpoints are available for external test/benchmark tooling. They do **not** affect the mobile workflow.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/info` | Server capabilities handshake |
+| `POST` | `/api/v1/bench/run_one` | Submit one benchmark case (upload or local_asset) |
+| `GET` | `/api/v1/assets` | List local-asset videos in `DATASETS_ROOT` |
+
+### `GET /api/v1/info`
+
+Returns `api_version`, `results_contract_version`, `available_backends`, `current_default_backend`, and server limits. Recommended first call for any external tool.
+
+```bash
+curl -s http://localhost:8000/api/v1/info | python3 -m json.tool
+```
+
+### `POST /api/v1/bench/run_one`
+
+Like `/videos/upload` but adds trazabilidad fields (`case_id`, `client_run_id`, `tags`) and supports `video_source_type=local_asset` (video already on server). Returns the same `job_id` — poll with `/videos/{id}/status` as usual.
+
+```bash
+# Upload mode
+curl -X POST http://localhost:8000/api/v1/bench/run_one \
+  -F video_source_type=upload \
+  -F "file=@/path/to/video.mp4" \
+  -F case_id=snatch_001 \
+  -F client_run_id=run_20260213
+
+# Local-asset mode (video already in data/bench_assets/)
+curl -X POST http://localhost:8000/api/v1/bench/run_one \
+  -F video_source_type=local_asset \
+  -F asset_id=snatch_001 \
+  -F case_id=snatch_001
+```
+
+See `docs/BENCHMARK_API.md` for full field reference and curl examples.

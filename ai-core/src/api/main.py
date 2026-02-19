@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .routes import videos_router
+from .routes import videos_router, info_router, bench_router, assets_router
 from .storage import init_storage, get_storage
 from .tasks import (
     start_worker, get_server_tracking_backend, set_server_tracking_backend,
@@ -111,6 +111,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(videos_router, prefix="/api/v1")
+app.include_router(info_router, prefix="/api/v1")    # GET /api/v1/info
+app.include_router(bench_router, prefix="/api/v1")   # POST /api/v1/bench/run_one
+app.include_router(assets_router, prefix="/api/v1")  # GET /api/v1/assets
 
 
 # Root endpoint

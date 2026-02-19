@@ -41,13 +41,23 @@ class VideoJob:
     results_path: Optional[str] = None
     selection_data: Optional[Dict[str, Any]] = None  # Disc selection: {center: [x,y], radius: r}
     original_filename: Optional[str] = None  # Original uploaded filename
-    tracking_backend: Optional[str] = None  # "cutie" or "yolo" (server-side config)
+    tracking_backend: Optional[str] = None   # "cutie" or "yolo" (effective backend used)
+    # Benchmark / trazabilidad
+    case_id: Optional[str] = None            # Stable case ID from benchmark runner
+    client_run_id: Optional[str] = None      # Global run ID from benchmark runner
+    tags: Optional[Dict[str, Any]] = None    # Free-form tags {key: value}
+    source_type: Optional[str] = None        # "upload" | "local_asset"
+    asset_id: Optional[str] = None           # Asset ID when source_type == "local_asset"
+    started_at: Optional[datetime] = None    # When processing actually started
+    finished_at: Optional[datetime] = None   # When processing completed/failed
     
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data['status'] = self.status.value
         data['created_at'] = self.created_at.isoformat()
         data['updated_at'] = self.updated_at.isoformat()
+        data['started_at'] = self.started_at.isoformat() if self.started_at else None
+        data['finished_at'] = self.finished_at.isoformat() if self.finished_at else None
         return data
     
     @classmethod
@@ -55,13 +65,18 @@ class VideoJob:
         data['status'] = ProcessingStatus(data['status'])
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        # Handle old jobs without selection_data, original_filename, or tracking_backend
-        if 'selection_data' not in data:
-            data['selection_data'] = None
-        if 'original_filename' not in data:
-            data['original_filename'] = None
-        if 'tracking_backend' not in data:
-            data['tracking_backend'] = None
+        # Backward-compat: handle old jobs without newer fields
+        for optional_field in (
+            'selection_data', 'original_filename', 'tracking_backend',
+            'case_id', 'client_run_id', 'tags', 'source_type', 'asset_id',
+        ):
+            if optional_field not in data:
+                data[optional_field] = None
+        for dt_field in ('started_at', 'finished_at'):
+            if dt_field not in data or data[dt_field] is None:
+                data[dt_field] = None
+            else:
+                data[dt_field] = datetime.fromisoformat(data[dt_field])
         return cls(**data)
 
 
@@ -164,12 +179,17 @@ class StorageManager:
         return video_path
     
     def create_job(
-        self, 
-        video_id: str, 
+        self,
+        video_id: str,
         video_path: Path,
         selection_data: Optional[Dict[str, Any]] = None,
         original_filename: Optional[str] = None,
-        tracking_backend: Optional[str] = None
+        tracking_backend: Optional[str] = None,
+        case_id: Optional[str] = None,
+        client_run_id: Optional[str] = None,
+        tags: Optional[Dict[str, Any]] = None,
+        source_type: Optional[str] = None,
+        asset_id: Optional[str] = None,
     ) -> VideoJob:
         """
         Create a new processing job.
@@ -193,7 +213,12 @@ class StorageManager:
             message="Video uploaded, waiting for processing",
             selection_data=selection_data,
             original_filename=original_filename,
-            tracking_backend=tracking_backend
+            tracking_backend=tracking_backend,
+            case_id=case_id,
+            client_run_id=client_run_id,
+            tags=tags,
+            source_type=source_type or "upload",
+            asset_id=asset_id,
         )
         
         with self._lock:
@@ -250,7 +275,9 @@ class StorageManager:
         message: Optional[str] = None,
         error: Optional[str] = None,
         results_path: Optional[str] = None,
-        tracking_backend: Optional[str] = None
+        tracking_backend: Optional[str] = None,
+        started_at: Optional[datetime] = None,
+        finished_at: Optional[datetime] = None,
     ) -> Optional[VideoJob]:
         """
         Update a job's state.
@@ -276,6 +303,10 @@ class StorageManager:
                 job.results_path = results_path
             if tracking_backend is not None:
                 job.tracking_backend = tracking_backend
+            if started_at is not None:
+                job.started_at = started_at
+            if finished_at is not None:
+                job.finished_at = finished_at
             
             job.updated_at = datetime.now()
             self._save_jobs()
@@ -344,6 +375,56 @@ class StorageManager:
         with self._lock:
             return dict(self._jobs)
     
+    def save_job_meta(self, video_id: str, meta: Dict[str, Any]) -> Path:
+        """
+        Save job_meta.json to the results directory.
+        
+        job_meta.json provides full traceability: timestamps, backend used,
+        input video info, benchmark metadata (case_id, client_run_id, tags).
+        """
+        results_dir = self.get_results_dir(video_id)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        meta_file = results_dir / "job_meta.json"
+        with open(meta_file, 'w') as f:
+            json.dump(meta, f, indent=2, default=str)
+        return meta_file
+
+    def list_assets(self, assets_root: Path) -> list:
+        """
+        List available local assets under assets_root.
+        Returns list of dicts: {asset_id, path, size_mb}.
+        """
+        if not assets_root.exists():
+            return []
+        result = []
+        for f in sorted(assets_root.iterdir()):
+            if f.is_file() and f.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm"}:
+                result.append({
+                    "asset_id": f.stem,
+                    "filename": f.name,
+                    "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
+                    "path": str(f),
+                })
+        return result
+
+    def resolve_asset_path(self, asset_id: str, assets_root: Path) -> Optional[Path]:
+        """
+        Resolve asset_id to an absolute path within assets_root.
+        
+        Security: validates the resolved path is inside assets_root to
+        prevent path traversal attacks.
+        """
+        # Try exact stem match first (asset_id without extension)
+        for ext in (".mp4", ".mov", ".avi", ".mkv", ".webm"):
+            candidate = (assets_root / (asset_id + ext)).resolve()
+            if candidate.exists() and str(candidate).startswith(str(assets_root.resolve())):
+                return candidate
+        # Also accept asset_id that already includes extension
+        candidate = (assets_root / asset_id).resolve()
+        if candidate.exists() and str(candidate).startswith(str(assets_root.resolve())):
+            return candidate
+        return None
+
     def cleanup_old_jobs(self, max_age_hours: int = 24):
         """
         Remove jobs older than max_age_hours.

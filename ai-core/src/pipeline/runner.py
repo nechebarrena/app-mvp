@@ -115,18 +115,34 @@ class PipelineRunner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
     def _setup_logging(self):
-        """Configure logging to file and console."""
-        log_file = self.output_dir / "pipeline.log"
+        """Configure logging to file and console.
         
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
-        )
-        self.logger = logging.getLogger("PipelineRunner")
+        Uses a unique logger name per run to avoid handler accumulation
+        across multiple API calls (basicConfig is a no-op after the first call).
+        """
+        log_file = self.output_dir / "pipeline.log"
+        self.log_file = log_file
+
+        run_id = self.config.session.output_dir
+        logger_name = f"PipelineRunner.{run_id}"
+        self.logger = logging.getLogger(logger_name)
+        self.logger.setLevel(logging.INFO)
+
+        # Prevent duplicate handlers if somehow re-initialised
+        if not self.logger.handlers:
+            fmt = logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
+            fh = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+            fh.setLevel(logging.INFO)
+            fh.setFormatter(fmt)
+            self.logger.addHandler(fh)
+
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            ch.setFormatter(fmt)
+            self.logger.addHandler(ch)
+
+            # Don't propagate to root logger to avoid double-printing
+            self.logger.propagate = False
         
         self.logger.info(f"Pipeline initialized. Run ID: {self.config.session.output_dir}")
         self.logger.info(f"Loaded configuration from {self.config_path}")
