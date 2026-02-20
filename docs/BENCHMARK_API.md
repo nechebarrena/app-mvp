@@ -120,6 +120,23 @@ Submit one video case for analysis. Returns the same `job_id` used by all standa
 | `tags` | string | no | JSON-encoded dict `{"key": "value"}` |
 | `backend` | string | no | Override backend for this job (`"cutie"` or `"yolo"`) |
 
+#### Canonical seed contract (no aliases)
+
+For both `video_source_type=upload` and `video_source_type=local_asset`, the seed fields are:
+
+- `disc_center_x`
+- `disc_center_y`
+- `disc_radius`
+- `seed_frame` (optional, default `0`)
+
+These are the only accepted names in the current server contract for benchmark runs.
+
+**Not supported in `/api/v1/bench/run_one`:**
+- `cx`, `cy`, `r`
+- Nested payload variants like `seed.circle.cx` / `seed.circle.cy` / `seed.circle.r`
+
+If any unsupported alias is sent, the server does not map it to disc selection and Cutie can fail with missing seed.
+
 #### Response (201 / 200)
 
 ```json
@@ -297,6 +314,7 @@ curl -s -X POST http://localhost:8000/api/v1/bench/run_one \
   -F "disc_center_x=640" \
   -F "disc_center_y=400" \
   -F "disc_radius=45" \
+  -F "seed_frame=0" \
   -F "case_id=snatch_001" \
   -F "client_run_id=run_20260213" \
   -F 'tags={"env":"indoor","disc":"black"}' \
@@ -317,6 +335,7 @@ curl -s -X POST http://localhost:8000/api/v1/bench/run_one \
   -F "disc_center_x=640" \
   -F "disc_center_y=400" \
   -F "disc_radius=45" \
+  -F "seed_frame=0" \
   -F "case_id=snatch_001" \
   -F "client_run_id=run_20260213" \
   | python3 -m json.tool

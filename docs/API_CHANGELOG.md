@@ -9,6 +9,12 @@ Contract versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs — benchmark seed contract clarification
+- Clarified that `/api/v1/bench/run_one` expects seed fields named exactly:
+  `disc_center_x`, `disc_center_y`, `disc_radius`, and optional `seed_frame`.
+- Explicitly documented that `cx`, `cy`, `r` aliases are not supported.
+- Added copy/paste curl examples for both `upload` and `local_asset` modes including canonical seed fields.
+
 ---
 
 ## [2.0.0] — 2026-02-13

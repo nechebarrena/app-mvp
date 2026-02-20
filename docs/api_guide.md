@@ -349,11 +349,23 @@ curl -s http://localhost:8000/api/v1/info | python3 -m json.tool
 
 Like `/videos/upload` but adds trazabilidad fields (`case_id`, `client_run_id`, `tags`) and supports `video_source_type=local_asset` (video already on server). Returns the same `job_id` — poll with `/videos/{id}/status` as usual.
 
+**Seed contract (canonical):**
+- `disc_center_x`
+- `disc_center_y`
+- `disc_radius`
+- `seed_frame` (optional, default `0`)
+
+Aliases like `cx`, `cy`, `r` are **not supported** by this endpoint.
+
 ```bash
 # Upload mode
 curl -X POST http://localhost:8000/api/v1/bench/run_one \
   -F video_source_type=upload \
   -F "file=@/path/to/video.mp4" \
+  -F "disc_center_x=640" \
+  -F "disc_center_y=400" \
+  -F "disc_radius=45" \
+  -F "seed_frame=0" \
   -F case_id=snatch_001 \
   -F client_run_id=run_20260213
 
@@ -361,6 +373,10 @@ curl -X POST http://localhost:8000/api/v1/bench/run_one \
 curl -X POST http://localhost:8000/api/v1/bench/run_one \
   -F video_source_type=local_asset \
   -F asset_id=snatch_001 \
+  -F "disc_center_x=640" \
+  -F "disc_center_y=400" \
+  -F "disc_radius=45" \
+  -F "seed_frame=0" \
   -F case_id=snatch_001
 ```
 
